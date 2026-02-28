@@ -1,0 +1,54 @@
+name: Dependency Update
+
+on:
+  schedule:
+    - cron: '0 0 * * 0' # Weekly on Sunday at midnight
+  workflow_dispatch:
+
+jobs:
+  update:
+    name: Update Dependencies
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🟢 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18.x'
+
+      - name: 🔄 Update backend dependencies
+        working-directory: ./backend
+        run: |
+          npm update
+          npm audit fix
+
+      - name: 🔄 Update frontend dependencies
+        working-directory: ./frontend
+        run: |
+          npm update
+          npm audit fix
+
+      - name: 📤 Create Pull Request
+        uses: peter-evans/create-pull-request@v5
+        with:
+          commit-message: 'chore: update dependencies'
+          title: '🔄 Weekly Dependency Update'
+          body: |
+            ## 📦 Dependency Updates
+            
+            This PR updates all npm dependencies to their latest versions.
+            
+            ### Changes
+            - Updated backend dependencies
+            - Updated frontend dependencies
+            - Applied security fixes
+            
+            ### Testing
+            - [ ] Run test suite
+            - [ ] Manual testing
+            - [ ] Check for breaking changes
+          branch: deps/weekly-update
+          delete-branch: true
