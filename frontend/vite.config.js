@@ -6,14 +6,8 @@ export default defineConfig({
   plugins: [react()],
   build: {
     outDir: 'dist',
-    sourcemap: false, // Disable in production
-    minify: 'terser',
-    terserOptions: {
-      compress: {
-        drop_console: true, // Remove console.logs
-        drop_debugger: true
-      }
-    },
+    sourcemap: false,
+    minify: 'esbuild', // Use default fast minifier
     rollupOptions: {
       output: {
         manualChunks: {
