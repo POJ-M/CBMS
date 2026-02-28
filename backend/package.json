@@ -4,7 +4,7 @@
   "description": "Presence of Jesus Church - Believer Management System",
   "main": "server.js",
   "engines": {
-    "node": ">=18.0.0",
+    "node": "18.x",
     "npm": ">=9.0.0"
   },
   "scripts": {
@@ -48,3 +48,4 @@
     "supertest": "^6.3.4"
   }
 }
+
