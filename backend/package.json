@@ -17,7 +17,6 @@
     "audit": "npm audit",
     "audit:fix": "npm audit fix",
     "build": "echo 'No build step required for backend'",
-    "prepare": "husky install",
     "validate": "npm run lint && npm run test"
   },
   "dependencies": {
@@ -41,11 +40,11 @@
   "devDependencies": {
     "eslint": "^8.50.0",
     "eslint-config-airbnb-base": "^15.0.0",
-    "husky": "^8.0.3",
     "jest": "^29.7.0",
     "lint-staged": "^14.0.1",
     "nodemon": "^3.0.1",
     "supertest": "^6.3.4"
   }
 }
+
 
