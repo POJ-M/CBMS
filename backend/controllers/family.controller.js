@@ -1,15 +1,3 @@
-/**
- * family.controller.js — Presence of Jesus Church BMS
- *
- * NEW IN THIS VERSION:
- *  ✅ addMember: Wife/Husband → maritalStatus auto = Married, spouseId auto-linked to head
- *  ✅ addMember: Prevents adding second spouse when head already has one
- *  ✅ addMember: Age < 18 → blocks Wife/Husband, forces maritalStatus = Single
- *  ✅ deleteFamily: soft-delete → trash (with deletedAt)
- *  ✅ restoreFamily: restore from trash (also restores members)
- *  ✅ permanentDeleteFamily: hard delete (only from trash)
- *  ✅ getTrashedFamilies: list trashed families
- */
 
 const mongoose   = require('mongoose');
 const momentTz   = require('moment-timezone');
@@ -30,7 +18,7 @@ const resolveOccupation = (age, provided) => (age <= 5 ? 'Child' : provided || '
 
 /** Shared validation for believer fields (phone, baptism). Returns error string or null. */
 const validateBelieverFields = (data) => {
-  if (data.phone && !/^\d{10}$/.test(data.phone)) {
+  if (data.phone && !/^[6-9]\d{9}$/.test(data.phone)) {
     return 'Phone must be exactly 10 digits.';
   }
 
@@ -119,7 +107,7 @@ const getFamilyById = catchAsync(async (req, res, next) => {
  * @route POST /api/families
  */
 const createFamily = catchAsync(async (req, res, next) => {
-  const { address, village, familyStatus, head } = req.body;
+  const { address, village, district, familyStatus, head } = req.body;
 
   if (!address?.trim())           return next(new AppError('Address is required.', 400));
   if (!village?.trim())           return next(new AppError('Village is required.', 400));
@@ -195,7 +183,7 @@ const createFamily = catchAsync(async (req, res, next) => {
  * @route PUT /api/families/:id
  */
 const updateFamily = catchAsync(async (req, res, next) => {
-  const { address, village, familyStatus } = req.body;
+  const { address, village, district, familyStatus } = req.body;
   const upd = {};
   if (address      !== undefined) upd.address      = address.trim();
   if (village      !== undefined) upd.village      = village.trim();
