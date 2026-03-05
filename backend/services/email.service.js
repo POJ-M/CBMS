@@ -19,14 +19,14 @@ const createTransport = () => {
   }
 
   transporter = nodemailer.createTransport({
-    host: "smtp.gmail.com",
-    port: 587,
-    secure: false,
+    host: 'smtp.gmail.com',  // ✅ Direct SMTP host
+  port: 587,
+  secure: false,
+  family: 4,  // ✅ FORCE IPv4 ONLY
     auth: {
       user: process.env.EMAIL_USER,
       pass: process.env.EMAIL_PASSWORD,
     },
-    family: 4,
     // ✅ Add these optimizations
     pool: true,              // Use connection pooling
     maxConnections: 5,       // Max 5 concurrent connections
@@ -263,6 +263,7 @@ module.exports = {
   sendBirthdayEmail,
   sendAnniversaryEmail,
 };
+
 
 
 
