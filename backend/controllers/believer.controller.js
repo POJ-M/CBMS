@@ -10,7 +10,7 @@ const TIMEZONE = 'Asia/Kolkata';
 
 // ─── EDITABLE FIELDS WHITELIST ────────────────────────────────────────────────
 const EDITABLE_FIELDS = [
-  'fullName', 'dob', 'gender', 'phone', 'email',
+  'fullName','tamilName', 'dob', 'gender', 'phone', 'email',
   'memberType', 'membershipStatus', 'joinDate',
   'baptized', 'baptizedDate',
   'maritalStatus', 'weddingDate', 'spouseId', 'spouseName',
@@ -133,7 +133,7 @@ const getAllBelievers = catchAsync(async (req, res) => {
 const getBelieverById = catchAsync(async (req, res, next) => {
   const believer = await Believer.findOne({ _id: req.params.id, isDeleted: false })
     .populate('familyId', 'familyCode village address')
-    .populate('spouseId', 'fullName dob gender');
+    .populate('spouseId', 'fullName tamilName dob gender');
 
   if (!believer) return next(new AppError('Believer not found.', 404));
   res.status(200).json({ success: true, data: believer });
