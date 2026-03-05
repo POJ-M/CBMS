@@ -25,6 +25,7 @@ const globalErrorHandler = require('./middleware/errorHandler');
 const AppError = require('./utils/AppError');
 
 const app = express();
+app.set('trust proxy',1);
 
 // Security Headers
 app.use(helmet({
@@ -143,3 +144,4 @@ process.on('uncaughtException', (err) => {
   console.error('❌ Uncaught Exception:', err.message);
   process.exit(1);
 });
+
