@@ -1,6 +1,4 @@
 // backend/routes/wishes.routes.js
-// Complete file with selective sending endpoint
-
 const express = require('express');
 const router = express.Router();
 const { protect, adminOnly } = require('../middleware/auth');
@@ -13,26 +11,20 @@ const {
 
 router.use(protect, adminOnly);
 
-/**
- * @route   GET /api/wishes/birthdays/preview
- * @desc    Preview today's birthday wishes
- */
+// Preview endpoints (unchanged)
 router.get('/birthdays/preview', catchAsync(async (req, res) => {
   const today = new Date();
   const believers = await getBirthdaysForDate(today);
-  
-  res.json({
-    success: true,
-    data: believers,
-    count: believers.length,
-  });
+  res.json({ success: true, data: believers, count: believers.length });
 }));
 
-/**
- * @route   POST /api/wishes/birthdays/send
- * @desc    Send birthday wishes to selected believers
- * @body    { believerIds: [id1, id2, ...] }
- */
+router.get('/anniversaries/preview', catchAsync(async (req, res) => {
+  const today = new Date();
+  const believers = await getAnniversariesForDate(today);
+  res.json({ success: true, data: believers, count: believers.length });
+}));
+
+// ✅ UPDATED: Send birthday wishes (respond immediately, send in background)
 router.post('/birthdays/send', catchAsync(async (req, res) => {
   const { believerIds } = req.body;
   
@@ -43,35 +35,27 @@ router.post('/birthdays/send', catchAsync(async (req, res) => {
     });
   }
   
-  const results = await sendWishesToSelected(believerIds, 'birthday');
-  
+  // ✅ Respond immediately
   res.json({
     success: true,
-    message: 'Birthday wishes sent',
-    data: results,
+    message: 'Wishes are being sent in the background. Check back in a few minutes.',
+    data: {
+      total: believerIds.length,
+      status: 'processing'
+    }
   });
-}));
-
-/**
- * @route   GET /api/wishes/anniversaries/preview
- * @desc    Preview today's anniversary wishes
- */
-router.get('/anniversaries/preview', catchAsync(async (req, res) => {
-  const today = new Date();
-  const believers = await getAnniversariesForDate(today);
   
-  res.json({
-    success: true,
-    data: believers,
-    count: believers.length,
-  });
+  // ✅ Send wishes in background (don't wait)
+  sendWishesToSelected(believerIds, 'birthday')
+    .then((results) => {
+      console.log('✅ Birthday wishes completed:', results);
+    })
+    .catch((error) => {
+      console.error('❌ Birthday wishes failed:', error);
+    });
 }));
 
-/**
- * @route   POST /api/wishes/anniversaries/send
- * @desc    Send anniversary wishes to selected believers
- * @body    { believerIds: [id1, id2, ...] }
- */
+// ✅ UPDATED: Send anniversary wishes (respond immediately, send in background)
 router.post('/anniversaries/send', catchAsync(async (req, res) => {
   const { believerIds } = req.body;
   
@@ -82,13 +66,24 @@ router.post('/anniversaries/send', catchAsync(async (req, res) => {
     });
   }
   
-  const results = await sendWishesToSelected(believerIds, 'anniversary');
-  
+  // ✅ Respond immediately
   res.json({
     success: true,
-    message: 'Anniversary wishes sent',
-    data: results,
+    message: 'Wishes are being sent in the background. Check back in a few minutes.',
+    data: {
+      total: believerIds.length,
+      status: 'processing'
+    }
   });
+  
+  // ✅ Send wishes in background (don't wait)
+  sendWishesToSelected(believerIds, 'anniversary')
+    .then((results) => {
+      console.log('✅ Anniversary wishes completed:', results);
+    })
+    .catch((error) => {
+      console.error('❌ Anniversary wishes failed:', error);
+    });
 }));
 
 module.exports = router;
