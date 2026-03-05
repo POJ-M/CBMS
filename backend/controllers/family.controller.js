@@ -169,7 +169,7 @@ const createFamily = catchAsync(async (req, res, next) => {
       isHead: true,
       relationshipToHead: 'Self',
       fullName: head.fullName.trim(),
-      tamilName: head.tamilName.trim(),
+      tamilName: head.tamilName?.trim(),,
       dob: head.dob || undefined,  // Optional for Deceased
       gender: head.gender,
       phone: head.phone || undefined,
@@ -415,7 +415,7 @@ const addMember = catchAsync(async (req, res, next) => {
     familyId: family._id,
     isHead: false,
     fullName: data.fullName.trim(),
-    tamilName:data.tamilName.trim(),
+    tamilName:data.tamilName?.trim(),
     dob: data.dob || undefined,  // Optional for Deceased
     gender: data.gender,
     phone: data.phone || undefined,
@@ -507,4 +507,5 @@ module.exports = {
   permanentDeleteFamily,
   addMember,
   assignNewHead,
+
 };
