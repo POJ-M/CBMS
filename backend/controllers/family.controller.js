@@ -169,7 +169,7 @@ const createFamily = catchAsync(async (req, res, next) => {
       isHead: true,
       relationshipToHead: 'Self',
       fullName: head.fullName.trim(),
-      tamilName: head.tamilName?.trim(),,
+      tamilName: head.tamilName?.trim(),
       dob: head.dob || undefined,  // Optional for Deceased
       gender: head.gender,
       phone: head.phone || undefined,
