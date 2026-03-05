@@ -13,12 +13,12 @@ const calcAge = (dob) => {
 // ✅ UPDATED: Create transporter with optimized settings
 let transporter = null;
 
-const createTransporter = () => {
+const createTransport = () => {
   if (transporter) {
     return transporter; // Reuse existing connection
   }
 
-  transporter = nodemailer.createTransporter({
+  transporter = nodemailer.createTransport({
     service: 'gmail',
     auth: {
       user: process.env.EMAIL_USER,
@@ -53,7 +53,7 @@ const sendBirthdayEmail = async (believer) => {
     return;
   }
 
-  const trans = createTransporter();
+  const trans = createTransport();
   const age = calcAge(believer.dob);
   const name = believer.fullName;
   const tamilName = believer.tamilName || believer.fullName;
@@ -151,7 +151,7 @@ const sendAnniversaryEmail = async (believer) => {
     return;
   }
 
-  const trans = createTransporter();
+  const trans = createTransport();
   
   const yearsMarried = believer.weddingDate
     ? new Date().getFullYear() - new Date(believer.weddingDate).getFullYear()
@@ -260,3 +260,4 @@ module.exports = {
   sendBirthdayEmail,
   sendAnniversaryEmail,
 };
+
