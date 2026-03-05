@@ -124,7 +124,7 @@ const sendBirthdayEmail = async (believer) => {
       </body>
       </html>
     `,
-  });
+  };
 
   // ✅ Add timeout handling
   try {
@@ -260,4 +260,5 @@ module.exports = {
   sendBirthdayEmail,
   sendAnniversaryEmail,
 };
+
 
