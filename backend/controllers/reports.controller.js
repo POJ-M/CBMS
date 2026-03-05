@@ -299,24 +299,32 @@ const exportReport = catchAsync(async (req, res) => {
     properties: { tabColor: { argb: 'FF8B0000' } },
   });
 
-  sheet.mergeCells('A1:N1');
+  sheet.mergeCells('A1:X1');
   sheet.getCell('A1').value = 'PRESENCE OF JESUS CHURCH';
   sheet.getCell('A1').font = { bold: true, size: 16, color: { argb: 'FF8B0000' } };
   sheet.getCell('A1').alignment = { horizontal: 'center' };
   sheet.getRow(1).height = 28;
 
-  sheet.mergeCells('A2:N2');
+  sheet.mergeCells('A2:X2'); 
   sheet.getCell('A2').value = reportTitle.toUpperCase();
   sheet.getCell('A2').font = { bold: true, size: 12 };
   sheet.getCell('A2').alignment = { horizontal: 'center' };
 
-  sheet.mergeCells('A3:N3');
+  sheet.mergeCells('A3:X3');
   sheet.getCell('A3').value = `Generated: ${momentTz().tz(TIMEZONE).format('DD-MM-YYYY HH:mm')} IST  |  Total: ${believers.length}`;
   sheet.getCell('A3').font = { italic: true, size: 9, color: { argb: 'FF666666' } };
   sheet.getCell('A3').alignment = { horizontal: 'center' };
   sheet.addRow([]);
 
-  const COLS = ['#', 'Full Name', 'Gender', 'DOB', 'Age', 'Member Type', 'Marital Status', 'Spouse Name', 'Baptized', 'Baptized Date', 'Occupation', 'Phone', 'Village', 'Status'];
+  const COLS = [
+  '#', 'Full Name', 'Tamil Name', 'Gender', 'DOB', 'Age', 
+  'Phone', 'Email', 'Member Type', 'Membership Status', 
+  'Join Date', 'Baptized', 'Baptized Date', 'Marital Status', 
+  'Wedding Date', 'Spouse Name', 'Occupation Category', 
+  'Education Level', 'Family Code', 'Village', 'District',
+  'Relationship to Head', 'Is Head', 'Created At', 'Updated At'
+];
+
   const headerRow = sheet.addRow(COLS);
   headerRow.eachCell((cell) => {
     cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
@@ -326,29 +334,70 @@ const exportReport = catchAsync(async (req, res) => {
   headerRow.height = 20;
 
   believers.forEach((b, i) => {
-    const row = sheet.addRow([
-      i + 1, b.fullName, b.gender,
-      b.dob ? momentTz(b.dob).tz(TIMEZONE).format('DD-MM-YYYY') : '',
-      calcAge(b.dob) ?? '',
-      b.memberType, b.maritalStatus,
-      b.spouseId?.fullName || b.spouseName || '',
-      b.baptized,
-      b.baptizedDate ? momentTz(b.baptizedDate).tz(TIMEZONE).format('DD-MM-YYYY') : '',
-      b.occupationCategory, b.phone || '',
-      b.familyId?.village || '', b.membershipStatus,
-    ]);
-    if (i % 2 === 0) {
-      row.eachCell((cell) => {
-        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEF2F2' } };
-      });
-    }
-  });
+  const row = sheet.addRow([
+    i + 1,
+    b.fullName,
+    b.tamilName || '',
+    b.gender,
+    b.dob ? momentTz(b.dob).tz(TIMEZONE).format('DD-MM-YYYY') : '',
+    calcAge(b.dob) ?? '',
+    b.phone || '',
+    b.email || '',
+    b.memberType,
+    b.membershipStatus,
+    b.joinDate ? momentTz(b.joinDate).tz(TIMEZONE).format('DD-MM-YYYY') : '',
+    b.baptized,
+    b.baptizedDate ? momentTz(b.baptizedDate).tz(TIMEZONE).format('DD-MM-YYYY') : '',
+    b.maritalStatus,
+    b.weddingDate ? momentTz(b.weddingDate).tz(TIMEZONE).format('DD-MM-YYYY') : '',
+    b.spouseId?.fullName || b.spouseName || '',
+    b.occupationCategory,
+    b.educationLevel || '',
+    b.familyId?.familyCode || '',
+    b.familyId?.village || '',
+    b.familyId?.district || '',
+    b.relationshipToHead === 'Other' && b.relationCustom 
+      ? `Other (${b.relationCustom})` 
+      : (b.relationshipToHead || ''),
+    b.isHead ? 'Yes' : 'No',
+    b.createdAt ? momentTz(b.createdAt).tz(TIMEZONE).format('DD-MM-YYYY HH:mm') : '',
+    b.updatedAt ? momentTz(b.updatedAt).tz(TIMEZONE).format('DD-MM-YYYY HH:mm') : ''
+  ]);
+  
+  if (i % 2 === 0) {
+    row.eachCell((cell) => {
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEF2F2' } };
+    });
+  }
+});
 
   sheet.columns = [
-    { width: 5 }, { width: 26 }, { width: 10 }, { width: 14 }, { width: 6 },
-    { width: 13 }, { width: 14 }, { width: 22 }, { width: 10 }, { width: 14 },
-    { width: 16 }, { width: 14 }, { width: 16 }, { width: 14 },
-  ];
+  { width: 5 },   // #
+  { width: 26 },  // Full Name
+  { width: 26 },  // Tamil Name
+  { width: 10 },  // Gender
+  { width: 14 },  // DOB
+  { width: 6 },   // Age
+  { width: 14 },  // Phone
+  { width: 28 },  // Email
+  { width: 13 },  // Member Type
+  { width: 16 },  // Membership Status
+  { width: 14 },  // Join Date
+  { width: 10 },  // Baptized
+  { width: 14 },  // Baptized Date
+  { width: 14 },  // Marital Status
+  { width: 14 },  // Wedding Date
+  { width: 22 },  // Spouse Name
+  { width: 18 },  // Occupation Category
+  { width: 16 },  // Education Level
+  { width: 14 },  // Family Code
+  { width: 16 },  // Village
+  { width: 16 },  // District
+  { width: 20 },  // Relationship to Head
+  { width: 10 },  // Is Head
+  { width: 18 },  // Created At
+  { width: 18 },  // Updated At
+];
 
   const safeTitle = reportTitle.replace(/[^a-zA-Z0-9_ -]/g, '').replace(/\s+/g, '_');
   res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
