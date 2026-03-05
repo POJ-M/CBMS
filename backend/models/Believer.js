@@ -1,12 +1,5 @@
 /**
- * Believer.js — Updated Model
- * Added: deletedAt: Date (for trash timestamp)
- *
- * NOTE on educationLevel:
- *   It is intentionally NOT marked required.
- *   If the frontend sends "" for educationLevel, the controller's
- *   sanitizePayload() will $unset it instead of $set it, avoiding
- *   the enum ValidationError entirely.
+ * Believer.js —
  */
 const mongoose = require('mongoose');
 
@@ -15,7 +8,8 @@ const believerSchema = new mongoose.Schema(
     familyId:  { type: mongoose.Schema.Types.ObjectId, ref: 'Family', required: true },
     isHead:    { type: Boolean, default: false },
     fullName:  { type: String, required: true, trim: true },
-    dob:       { type: Date, required: true },
+    tamilName: { type: String, trim: true },
+    dob:       { type: Date, required: false  },
     gender:    { type: String, enum: ['Male', 'Female', 'Other'], required: true },
 
     phone: {
@@ -27,21 +21,25 @@ const believerSchema = new mongoose.Schema(
     },
     email: { type: String, trim: true, lowercase: true },
 
-    memberType:       { type: String, enum: ['Member', 'Youth', 'Child'], required: true },
-    membershipStatus: { type: String, enum: ['Active', 'Inactive'], default: 'Active' },
+    memberType:       { type: String, enum: ['Member', 'Youth', 'Child','Deceased'], required: true },
+    membershipStatus: {
+      type: String,
+      enum: ['Active', 'Inactive', 'Deceased', 'Transferred'],  
+      default: 'Active',
+    },    
     joinDate:         { type: Date },
 
-    baptized:     { type: String, enum: ['Yes', 'No'], required: true },
+    baptized:     { type: String, enum: ['Yes', 'No'], },
     baptizedDate: { type: Date },
 
     relationshipToHead: {
       type: String,
       enum: ['Self', 'Wife', 'Husband', 'Son', 'Daughter', 'Father', 'Mother', 'Other'],
-      required: true,
+      
     },
     relationCustom: { type: String, trim: true },
 
-    maritalStatus: { type: String, enum: ['Single', 'Married', 'Widowed'], required: true },
+    maritalStatus: { type: String, enum: ['Single', 'Married', 'Widowed'],  },
     spouseId:      { type: mongoose.Schema.Types.ObjectId, ref: 'Believer', default: null },
     spouseName:    { type: String, trim: true },
     weddingDate:   { type: Date },
@@ -49,7 +47,7 @@ const believerSchema = new mongoose.Schema(
     occupationCategory: {
       type: String,
       enum: ['Child', 'Student','Ministry', 'Employed', 'Self-Employed', 'Business', 'Agriculture', 'Daily wages',
-             'House-Wife', 'Non-Worker', 'Retired'],
+             'House-Wife', 'Non-Worker', 'Retired','Deceased'],
       required: true,
     },
 
@@ -73,6 +71,20 @@ believerSchema.virtual('age').get(function () {
   if (!this.dob) return null;
   const m = require('moment-timezone');
   return m().tz('Asia/Kolkata').diff(m(this.dob).tz('Asia/Kolkata'), 'years');
+});
+
+// PRE-SAVE HOOK: Auto-set fields for Deceased status
+believerSchema.pre('save', function (next) {
+  // If membership status is Deceased, auto-set member type and occupation
+  if (this.membershipStatus === 'Deceased') {
+    this.memberType = 'Deceased';
+    this.occupationCategory = 'Deceased';
+    // Optional: Clear baptized/marital if needed
+    // this.baptized = undefined;
+    // this.maritalStatus = undefined;
+  }
+  
+  next();
 });
 
 believerSchema.set('toJSON',   { virtuals: true });
