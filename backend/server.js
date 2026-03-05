@@ -8,6 +8,7 @@ const rateLimit = require('express-rate-limit');
 const winston = require('winston');
 require('dotenv').config();
 const validateEnv = require('./config/validateEnv');
+const { scheduleDailyWishes } = require('./jobs/dailyWishes.job');
 
 validateEnv();
 // Import routes
@@ -17,14 +18,13 @@ const believerRoutes = require('./routes/believer.routes');
 const dashboardRoutes = require('./routes/dashboard.routes');
 const analyticsRoutes = require('./routes/analytics.routes');
 const reportsRoutes = require('./routes/reports.routes');
+const wishesRoutes = require('./routes/wishes.routes');
 
 // Import global error handler
 const globalErrorHandler = require('./middleware/errorHandler');
 const AppError = require('./utils/AppError');
 
 const app = express();
-
-app.set('trust proxy', 1); 
 
 // Security Headers
 app.use(helmet({
@@ -96,6 +96,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/families', familyRoutes);
 app.use('/api/believers', believerRoutes);
 app.use('/api/dashboard', dashboardRoutes);
+app.use('/api/wishes', wishesRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/reports', reportsRoutes);
 
@@ -127,6 +128,11 @@ mongoose
     process.exit(1);
   });
 
+  mongoose.connection.once('open', () => {  
+  // Start cron jobs
+  scheduleDailyWishes();
+});
+
 // ── Graceful Shutdown ─────────────────────────────────────────────────────────
 process.on('unhandledRejection', (err) => {
   console.error('❌ Unhandled Promise Rejection:', err.message);
@@ -136,5 +142,4 @@ process.on('unhandledRejection', (err) => {
 process.on('uncaughtException', (err) => {
   console.error('❌ Uncaught Exception:', err.message);
   process.exit(1);
-
 });
