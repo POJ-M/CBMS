@@ -16,7 +16,7 @@ const NAV_ITEMS = [
   { to: '/',          label: 'Dashboard',         icon: LayoutDashboard, exact: true },
   { to: '/families',  label: 'Family Management', icon: Users },
   { to: '/believers', label: 'Believers',         icon: UserCheck },
-  { to: '/wishes',    label: 'Wishes',            icon: Gift },
+  // { to: '/wishes',    label: 'Wishes',            icon: Gift },
   { to: '/reports',   label: 'Reports',           icon: FileText },
   { to: '/analytics', label: 'Analytics',         icon: BarChart3 },
 ];
@@ -148,4 +148,5 @@ export default function Layout() {
       </div>
     </div>
   );
+
 }
