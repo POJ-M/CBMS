@@ -1,7 +1,6 @@
 // backend/services/email.service.js
-// ✅ FIXED VERSION - Copy this entire file
-
 const nodemailer = require('nodemailer');
+const sgMail = require('@sendgrid/mail');  // ✅ Add this
 const momentTz = require('moment-timezone');
 
 const TIMEZONE = 'Asia/Kolkata';
@@ -11,36 +10,33 @@ const calcAge = (dob) => {
   return momentTz().tz(TIMEZONE).diff(momentTz(dob).tz(TIMEZONE), 'years');
 };
 
-// ✅ CRITICAL FIX: Function name is 'createTransporter' (with 'er' at the end)
+// ✅ Use SendGrid instead of Gmail SMTP
 let transporter = null;
 
-const createTransporter = () => {  // ✅ NOT 'createTransport'
+const createTransporter = () => {
   if (transporter) {
     return transporter;
   }
 
-  console.log('📧 Creating email transporter with IPv4 fix...');
+  console.log('📧 Creating email transporter with SendGrid...');
 
+  // ✅ Configure SendGrid
+  if (process.env.SENDGRID_API_KEY) {
+    sgMail.setApiKey(process.env.SENDGRID_API_KEY);
+    console.log('✅ SendGrid configured');
+  }
+
+  // Fallback to SMTP if SendGrid not available
   transporter = nodemailer.createTransport({
-    host: 'smtp.gmail.com',
+    host: 'smtp.sendgrid.net',  // ✅ SendGrid SMTP
     port: 587,
     secure: false,
-    family: 4,  // ✅ Force IPv4
     auth: {
-      user: process.env.EMAIL_USER,
-      pass: process.env.EMAIL_PASSWORD,
+      user: 'apikey',  // ✅ Literally the word "apikey"
+      pass: process.env.SENDGRID_API_KEY,
     },
-    pool: true,
-    maxConnections: 5,
-    maxMessages: 10,
     connectionTimeout: 10000,
     greetingTimeout: 5000,
-    socketTimeout: 15000,
-  });
-
-  transporter.on('error', (error) => {
-    console.error('📧 Transporter error:', error);
-    transporter = null;
   });
 
   console.log('✅ Transporter created successfully');
@@ -53,7 +49,6 @@ const sendBirthdayEmail = async (believer) => {
     return;
   }
 
-  const trans = createTransporter();  // ✅ Calls correct function
   const age = calcAge(believer.dob);
   const name = believer.fullName;
   const tamilName = believer.tamilName || believer.fullName;
@@ -129,12 +124,8 @@ const sendBirthdayEmail = async (believer) => {
   };
 
   try {
-    const info = await Promise.race([
-      trans.sendMail(mailOptions),
-      new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('Email timeout after 15 seconds')), 15000)
-      )
-    ]);
+    const trans = createTransporter();
+    const info = await trans.sendMail(mailOptions);
     console.log(`✅ Birthday email sent to ${believer.fullName} (${believer.email})`);
     return info;
   } catch (error) {
@@ -149,8 +140,6 @@ const sendAnniversaryEmail = async (believer) => {
     return;
   }
 
-  const trans = createTransporter();  // ✅ Calls correct function
-  
   const yearsMarried = believer.weddingDate
     ? new Date().getFullYear() - new Date(believer.weddingDate).getFullYear()
     : null;
@@ -233,12 +222,8 @@ const sendAnniversaryEmail = async (believer) => {
   };
 
   try {
-    const info = await Promise.race([
-      trans.sendMail(mailOptions),
-      new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('Email timeout after 15 seconds')), 15000)
-      )
-    ]);
+    const trans = createTransporter();
+    const info = await trans.sendMail(mailOptions);
     console.log(`✅ Anniversary email sent to ${believer.fullName} (${believer.email})`);
     return info;
   } catch (error) {
