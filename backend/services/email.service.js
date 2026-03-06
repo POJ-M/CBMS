@@ -19,10 +19,10 @@ const createTransport = () => {
   }
 
   transporter = nodemailer.createTransport({
-    host: 'smtp.gmail.com',  // ✅ Direct SMTP host
-  port: 587,
-  secure: false,
-  family: 4,  // ✅ FORCE IPv4 ONLY
+  host: 'smtp.gmail.com',
+  port: 465,           // ✅ Try this if 587 fails
+  secure: true,        // ✅ true for port 465
+  family: 4,
     auth: {
       user: process.env.EMAIL_USER,
       pass: process.env.EMAIL_PASSWORD,
@@ -263,6 +263,7 @@ module.exports = {
   sendBirthdayEmail,
   sendAnniversaryEmail,
 };
+
 
 
 
