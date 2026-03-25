@@ -1,22 +1,15 @@
 /**
  * FamilyManagement.jsx
- *
- * Changes vs previous version:
- *  2.  FamilyDetail: auto-fetches members on open (useEffect → refresh())
- *  3.  CreateFamilyModal: Section moved OUTSIDE render body — fixes focus-loss bug
- *  4.  FamilyDetail: delete button per member row with confirm dialog
- *  5.  All catch blocks use parseApiError() for friendly error messages
- *  1.  All date inputs replaced with DatePicker component
- *  9.  baptizedDate is OPTIONAL (no required validation, label shows "optional")
- * 11.  memberType auto-locked by age rule:
- *       age < 13 → Child | 13-30 + Single → Youth | else → Member
+ * Changes:
+ *  - Dynamic search (real-time, no submit needed)
+ *  - Sortable columns: Head Name (alphabetic) and Family Code
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   Users, Eye, Trash2, Plus, X, Search, RefreshCw,
   Loader2, AlertTriangle, CheckCircle, MapPin, Phone, Lock,
-  UserMinus, AlertCircle, Info, Edit2,
+  UserMinus, AlertCircle, Info, Edit2, ChevronUp, ChevronDown, ChevronsUpDown,
 } from 'lucide-react';
 import api from '../api/axios';
 import toast from 'react-hot-toast';
@@ -46,8 +39,15 @@ const EMPTY_HEAD = {
   occupationCategory: '', educationLevel: '',
 };
 
-// ─── item 11: Auto member type ─────────────────────────────────────────────────
+// ─── Sort Arrow ────────────────────────────────────────────────────────────────
+const SortArrow = ({ field, sortBy, sortDir }) => {
+  if (sortBy !== field) return <ChevronsUpDown className="w-3.5 h-3.5 text-gray-300 ml-1 flex-shrink-0" />;
+  return sortDir === 'asc'
+    ? <ChevronUp   className="w-3.5 h-3.5 text-white ml-1 flex-shrink-0" />
+    : <ChevronDown className="w-3.5 h-3.5 text-white ml-1 flex-shrink-0" />;
+};
 
+// ─── item 11: Auto member type ─────────────────────────────────────────────────
 function autoMemberType(age, maritalStatus) {
   if (age === null) return null;
   if (age < 13) return 'Child';
@@ -62,7 +62,7 @@ const TYPE_BADGE = {
   Deceased: 'bg-gray-200 text-gray-600',
 };
 
-// ─── HELPERS (outside any component — stable refs) ─────────────────────────────
+// ─── HELPERS ──────────────────────────────────────────────────────────────────
 
 const inp = (hasErr) =>
   `w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 transition-colors bg-white
@@ -71,8 +71,6 @@ const inp = (hasErr) =>
 const sel = (hasErr) => inp(hasErr) + ' cursor-pointer';
 const lbl = (req) =>
   `block text-xs font-semibold text-gray-600 mb-1${req ? " after:content-['*'] after:text-red-500 after:ml-0.5" : ''}`;
-
-// ─── FIX #3: FormSection OUTSIDE CreateFamilyModal — no remount on keypress ────
 
 function FormSection({ color, title, children }) {
   return (
@@ -91,8 +89,6 @@ function Ferr({ msg }) {
     </p>
   );
 }
-
-// ─── RELATIONSHIP BADGE ────────────────────────────────────────────────────────
 
 function RelBadge({ m }) {
   const label = m.relationshipToHead === 'Other' && m.relationCustom
@@ -135,7 +131,6 @@ function EditFamilyModal({ family, districts, onSuccess, onClose }) {
       toast.error('Please fix the highlighted fields.');
       return;
     }
-    
     setSaving(true);
     try {
       await api.put(`/families/${family._id}`, {
@@ -156,72 +151,56 @@ function EditFamilyModal({ family, districts, onSuccess, onClose }) {
   return (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden">
-        
-        {/* Header */}
         <div className="bg-blue-800 px-6 py-4 flex items-center justify-between">
           <div>
             <h3 className="text-white font-bold text-lg">Edit Family Details</h3>
             <p className="text-blue-200 text-xs mt-0.5">{family.familyCode}</p>
           </div>
-          <button type="button" onClick={onClose}
-            className="text-blue-200 hover:text-white p-1">
+          <button type="button" onClick={onClose} className="text-blue-200 hover:text-white p-1">
             <X className="w-5 h-5" />
           </button>
         </div>
-
-        {/* Form */}
         <div className="p-6 space-y-4">
           <div>
             <label className={lbl(true)}>Address</label>
-            <textarea 
-              className={inp(errors.address) + ' min-h-[80px]'} 
+            <textarea
+              className={inp(errors.address) + ' min-h-[80px]'}
               value={form.address}
-              onChange={setField('address')} 
-              placeholder="Full address" 
+              onChange={setField('address')}
+              placeholder="Full address"
               rows={3}
             />
             <Ferr msg={errors.address} />
           </div>
-
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className={lbl(true)}>District</label>
-              <select className={sel(errors.district)} value={form.district} 
-                onChange={setField('district')}>
+              <select className={sel(errors.district)} value={form.district} onChange={setField('district')}>
                 <option value="">Select District...</option>
                 {districts.map((d) => <option key={d} value={d}>{d}</option>)}
               </select>
               <Ferr msg={errors.district} />
             </div>
-
             <div>
               <label className={lbl(true)}>Village / Town</label>
-              <input className={inp(errors.village)} value={form.village}
-                onChange={setField('village')} placeholder="e.g. Salem" />
+              <input className={inp(errors.village)} value={form.village} onChange={setField('village')} placeholder="e.g. Salem" />
               <Ferr msg={errors.village} />
             </div>
           </div>
-
           <div>
             <label className={lbl(false)}>Family Status</label>
-            <select className={sel(false)} value={form.familyStatus} 
-              onChange={setField('familyStatus')}>
+            <select className={sel(false)} value={form.familyStatus} onChange={setField('familyStatus')}>
               {FAMILY_STATUS_OPTIONS.map((s) => <option key={s}>{s}</option>)}
             </select>
           </div>
-
-          {/* Info box */}
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 flex items-start gap-2">
             <Info className="w-4 h-4 text-blue-600 flex-shrink-0 mt-0.5" />
             <p className="text-xs text-blue-700">
-              <strong>Note:</strong> Family Code and Head cannot be changed here. 
+              <strong>Note:</strong> Family Code and Head cannot be changed here.
               To change the head, use "Assign New Head" from the family detail view.
             </p>
           </div>
         </div>
-
-     
-        {/* Actions */}
         <div className="px-6 py-4 border-t border-gray-100 flex justify-end gap-3 bg-gray-50">
           <button type="button" onClick={onClose} disabled={saving}
             className="px-5 py-2 border border-gray-200 rounded-lg text-sm font-medium hover:bg-gray-100 disabled:opacity-50">
@@ -242,47 +221,36 @@ function EditFamilyModal({ family, districts, onSuccess, onClose }) {
 
 // ─── CREATE FAMILY MODAL ───────────────────────────────────────────────────────
 
-function CreateFamilyModal({ districts,onSuccess, onClose }) {
+function CreateFamilyModal({ districts, onSuccess, onClose }) {
   const [family, setFamily] = useState({ address: '', village: '', district: '', familyStatus: 'Active' });
   const [head,   setHead]   = useState({ ...EMPTY_HEAD });
   const [errors, setErrors] = useState({});
   const [saving, setSaving] = useState(false);
 
-  // Derived values — always fresh from current state
-  const age       = head.dob ? calcAge(head.dob) : null;
-  const isUnder18 = age !== null && age < 18;
-  const isUnder6  = age !== null && age <= 5;
+  const age        = head.dob ? calcAge(head.dob) : null;
+  const isUnder18  = age !== null && age < 18;
+  const isUnder6   = age !== null && age <= 5;
   const isDeceased = head.membershipStatus === 'Deceased';
-  const today     = new Date().toISOString().split('T')[0];
-
-  // item 11: auto memberType for head
+  const today      = new Date().toISOString().split('T')[0];
   const memberType = autoMemberType(age, isUnder18 ? 'Single' : head.maritalStatus);
 
-  // ── Family field setter ──────────────────────────────────────────────────
-  const setF = (field) => (e) =>
-    setFamily((p) => ({ ...p, [field]: e.target.value }));
-
-  // ── Head text/select setter ──────────────────────────────────────────────
+  const setF = (field) => (e) => setFamily((p) => ({ ...p, [field]: e.target.value }));
   const setH = (field) => (e) => {
     const val = e.target.value;
     setHead((p) => ({ ...p, [field]: val }));
     setErrors((p) => { const n = { ...p }; delete n[field]; return n; });
   };
-
-  // ── Head DatePicker setter ───────────────────────────────────────────────
   const setHDate = (field) => (ymd) => {
     setHead((p) => ({ ...p, [field]: ymd }));
     setErrors((p) => { const n = { ...p }; delete n[field]; return n; });
   };
 
-  // ── DOB change with side-effects ─────────────────────────────────────────
   const handleDobChange = (ymd) => {
     const newAge  = ymd ? calcAge(ymd) : null;
     const under18 = newAge !== null && newAge < 18;
     const under6  = newAge !== null && newAge <= 5;
     setHead((p) => ({
-      ...p,
-      dob: ymd,
+      ...p, dob: ymd,
       ...(under18 ? { maritalStatus: 'Single', weddingDate: '', spouseName: '' } : {}),
       ...(under6  ? { occupationCategory: 'Child', educationLevel: '' } : {}),
     }));
@@ -313,27 +281,20 @@ function CreateFamilyModal({ districts,onSuccess, onClose }) {
 
   const validate = () => {
     const e = {};
-    if (!family.address.trim()) e.address = 'Address is required.';
-    if (!family.village.trim()) e.village = 'Village is required.';
+    if (!family.address.trim())  e.address  = 'Address is required.';
+    if (!family.village.trim())  e.village  = 'Village is required.';
     if (!family.district.trim()) e.district = 'District is required.';
-    if (!head.fullName.trim()) e.fullName = 'Head name is required.';
-    if (!head.gender) e.gender = 'Gender is required.';
-    
-      // NEW: DOB only required if NOT Deceased
-      if (!isDeceased && !head.dob) {
-        e.dob = 'Date of birth is required.';
-      }
-      
-      // Only require these if NOT Deceased
-      if (!isDeceased) {
-        if (!head.baptized) e.baptized = 'Baptized status is required.';
-        if (!head.occupationCategory && !isUnder6) e.occupationCategory = 'Occupation is required.';
-        if (!isUnder18 && !head.maritalStatus) e.maritalStatus = 'Marital status is required.';
-      }
-      
-      if (head.phone && !/^\d{10}$/.test(head.phone)) e.phone = 'Phone must be 10 digits.';
-      return e;
-    };
+    if (!head.fullName.trim())   e.fullName = 'Head name is required.';
+    if (!head.gender)            e.gender   = 'Gender is required.';
+    if (!isDeceased && !head.dob) e.dob = 'Date of birth is required.';
+    if (!isDeceased) {
+      if (!head.baptized) e.baptized = 'Baptized status is required.';
+      if (!head.occupationCategory && !isUnder6) e.occupationCategory = 'Occupation is required.';
+      if (!isUnder18 && !head.maritalStatus) e.maritalStatus = 'Marital status is required.';
+    }
+    if (head.phone && !/^\d{10}$/.test(head.phone)) e.phone = 'Phone must be 10 digits.';
+    return e;
+  };
 
   const handleSubmit = async () => {
     const errs = validate();
@@ -342,7 +303,6 @@ function CreateFamilyModal({ districts,onSuccess, onClose }) {
       toast.error('Please fix the highlighted fields.');
       return;
     }
-    
     setSaving(true);
     try {
       const headPayload = {
@@ -351,45 +311,29 @@ function CreateFamilyModal({ districts,onSuccess, onClose }) {
         memberType: isDeceased ? 'Deceased' : (memberType || 'Member'),
         membershipStatus: head.membershipStatus || 'Active',
       };
-
       if (head.tamilName.trim()) headPayload.tamilName = head.tamilName.trim();
-
-      // DOB: Include if provided (optional for Deceased)
-      if (head.dob) {
-        headPayload.dob = head.dob;
-      }
-      
-      // Only add these if NOT Deceased
+      if (head.dob) headPayload.dob = head.dob;
       if (!isDeceased) {
         headPayload.baptized = head.baptized;
         headPayload.occupationCategory = isUnder6 ? 'Child' : head.occupationCategory;
         headPayload.maritalStatus = isUnder18 ? 'Single' : head.maritalStatus;
       } else {
-        // Auto-set for Deceased (backend will also do this)
         headPayload.occupationCategory = 'Deceased';
       }
-      
       if (head.phone.trim()) headPayload.phone = head.phone.trim();
       if (head.email.trim()) headPayload.email = head.email.trim();
       if (head.joinDate) headPayload.joinDate = head.joinDate;
-      
-      // Only add these if NOT Deceased
       if (!isDeceased) {
-        if (head.baptized === 'Yes' && head.baptizedDate) {
-          headPayload.baptizedDate = head.baptizedDate;
-        }
+        if (head.baptized === 'Yes' && head.baptizedDate) headPayload.baptizedDate = head.baptizedDate;
         if (head.dob && !isUnder18 && head.maritalStatus === 'Married') {
           if (head.weddingDate) headPayload.weddingDate = head.weddingDate;
           if (head.spouseName.trim()) headPayload.spouseName = head.spouseName.trim();
         }
-        if (head.dob && !isUnder18 && head.maritalStatus === 'Widowed' && head.spouseName.trim()) {
+        if (head.dob && !isUnder18 && head.maritalStatus === 'Widowed' && head.spouseName.trim())
           headPayload.spouseName = head.spouseName.trim();
-        }
-        if (head.occupationCategory === 'Student' && head.educationLevel) {
+        if (head.occupationCategory === 'Student' && head.educationLevel)
           headPayload.educationLevel = head.educationLevel;
-        }
       }
-
       await api.post('/families', {
         address: family.address.trim(),
         village: family.village.trim(),
@@ -397,7 +341,6 @@ function CreateFamilyModal({ districts,onSuccess, onClose }) {
         familyStatus: family.familyStatus,
         head: headPayload,
       });
-      
       toast.success('Family created successfully!');
       onSuccess();
     } catch (err) {
@@ -410,47 +353,34 @@ function CreateFamilyModal({ districts,onSuccess, onClose }) {
   return (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[92vh] flex flex-col overflow-hidden">
-
         <div className="bg-red-800 px-6 py-4 flex items-center justify-between flex-shrink-0">
           <div>
             <h3 className="text-white font-bold text-lg">Create New Family</h3>
             <p className="text-red-200 text-xs mt-0.5">Family + Head Believer required</p>
           </div>
-          <button type="button" onClick={onClose}
-            className="text-red-200 hover:text-white p-1"><X className="w-5 h-5" /></button>
+          <button type="button" onClick={onClose} className="text-red-200 hover:text-white p-1"><X className="w-5 h-5" /></button>
         </div>
-
-        {/* FIX #3: plain <div> scroll wrapper, no inline Section component */}
         <div className="overflow-y-auto flex-1 p-5 space-y-4">
-
-          {/* Family Details */}
           <FormSection color="gray" title="Family Details">
             <div className="grid grid-cols-2 gap-3">
               <div className="col-span-2">
                 <label className={lbl(true)}>Address</label>
-                <input className={inp(errors.address)} value={family.address}
-                  onChange={setF('address')} placeholder="Full address" />
+                <input className={inp(errors.address)} value={family.address} onChange={setF('address')} placeholder="Full address" />
                 <Ferr msg={errors.address} />
               </div>
-              
-              {/* NEW: District Dropdown */}
               <div>
                 <label className={lbl(true)}>District</label>
-                <select className={sel(errors.district)} value={family.district || ''} 
-                  onChange={setF('district')}>
+                <select className={sel(errors.district)} value={family.district || ''} onChange={setF('district')}>
                   <option value="">Select District...</option>
                   {districts.map((d) => <option key={d} value={d}>{d}</option>)}
                 </select>
                 <Ferr msg={errors.district} />
               </div>
-              
               <div>
                 <label className={lbl(true)}>Village / Town</label>
-                <input className={inp(errors.village)} value={family.village}
-                  onChange={setF('village')} placeholder="e.g. Salem" />
+                <input className={inp(errors.village)} value={family.village} onChange={setF('village')} placeholder="e.g. Salem" />
                 <Ferr msg={errors.village} />
               </div>
-              
               <div className="col-span-2">
                 <label className={lbl(false)}>Family Status</label>
                 <select className={sel(false)} value={family.familyStatus} onChange={setF('familyStatus')}>
@@ -460,43 +390,27 @@ function CreateFamilyModal({ districts,onSuccess, onClose }) {
             </div>
           </FormSection>
 
-          {/* Head — Personal */}
           <FormSection color="blue" title="Head Believer — Personal">
             <div className="grid grid-cols-2 gap-3">
               <div className="col-span-2">
                 <label className={lbl(true)}>Full Name</label>
-                <input className={inp(errors.fullName)} value={head.fullName}
-                  onChange={setH('fullName')} placeholder="Head's full name" />
+                <input className={inp(errors.fullName)} value={head.fullName} onChange={setH('fullName')} placeholder="Head's full name" />
                 <Ferr msg={errors.fullName} />
               </div>
               <div className="col-span-2">
                 <label className={lbl(false)}>Tamil Name</label>
-                <input className={inp(errors.tamilName)} value={head.tamilName}
-                  onChange={setH('tamilName')} placeholder="Head's tamil name" />
-                <Ferr msg={errors.tamilName} />
+                <input className={inp(errors.tamilName)} value={head.tamilName} onChange={setH('tamilName')} placeholder="Head's tamil name" />
               </div>
               <div>
                 <label className={lbl(!isDeceased)}>
                   Date of Birth
                   {isDeceased && <span className="text-gray-400 font-normal ml-1">(optional)</span>}
                 </label>
-                <DatePicker
-                  value={head.dob}
-                  onChange={handleDobChange}
-                  max={today}
-                  placeholder="DD/MM/YYYY"
-                  error={!!errors.dob}
-                  disabled={false}  // Not locked, just optional
-                />
+                <DatePicker value={head.dob} onChange={handleDobChange} max={today} placeholder="DD/MM/YYYY" error={!!errors.dob} />
                 {head.dob && age !== null && (
                   <p className="text-xs mt-1 text-gray-400">
                     Age: <strong className="text-red-800">{age}</strong> yrs
                     {isUnder18 && <span className="text-amber-600 ml-1">· Under 18</span>}
-                  </p>
-                )}
-                {isDeceased && !head.dob && (
-                  <p className="text-xs text-gray-400 mt-1">
-                    Birth date may be unknown for deceased members
                   </p>
                 )}
                 <Ferr msg={errors.dob} />
@@ -511,31 +425,24 @@ function CreateFamilyModal({ districts,onSuccess, onClose }) {
               </div>
               <div>
                 <label className={lbl(false)}>Phone</label>
-                <input className={inp(errors.phone)} value={head.phone}
-                  onChange={setH('phone')} placeholder="10 digits" maxLength={10} />
+                <input className={inp(errors.phone)} value={head.phone} onChange={setH('phone')} placeholder="10 digits" maxLength={10} />
                 <Ferr msg={errors.phone} />
               </div>
               <div>
                 <label className={lbl(false)}>Email</label>
-                <input type="email" className={inp(false)} value={head.email}
-                  onChange={setH('email')} placeholder="email@example.com" />
+                <input type="email" className={inp(false)} value={head.email} onChange={setH('email')} placeholder="email@example.com" />
               </div>
             </div>
           </FormSection>
 
-          {/* Head — Church Details */}
           <FormSection color="green" title="Head Believer — Church Details">
             <div className="grid grid-cols-2 gap-3">
-
-              {/* item 11: Auto memberType */}
               <div className="col-span-2">
                 <label className={lbl(false)}>Member Type</label>
                 {memberType ? (
                   <div className="flex items-center gap-2 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg">
                     <Lock className="w-3.5 h-3.5 text-gray-400" />
-                    <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${TYPE_BADGE[memberType]}`}>
-                      {memberType}
-                    </span>
+                    <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${TYPE_BADGE[memberType]}`}>{memberType}</span>
                     <span className="text-xs text-gray-400">(Auto-set from age &amp; marital)</span>
                   </div>
                 ) : (
@@ -544,14 +451,12 @@ function CreateFamilyModal({ districts,onSuccess, onClose }) {
                   </div>
                 )}
               </div>
-
               <div>
                 <label className={lbl(false)}>Membership Status</label>
                 <select className={sel(false)} value={head.membershipStatus} onChange={setH('membershipStatus')}>
                   {MEMBER_STATUS_OPTIONS.map((s) => <option key={s}>{s}</option>)}
                 </select>
               </div>
-
               <div>
                 <label className={lbl(!isDeceased)}>Baptized</label>
                 <select className={sel(errors.baptized)} value={head.baptized} onChange={handleBaptizedChange}>
@@ -560,35 +465,19 @@ function CreateFamilyModal({ districts,onSuccess, onClose }) {
                 </select>
                 <Ferr msg={errors.baptized} />
               </div>
-
-              {/* item 9: baptizedDate optional */}
               {head.baptized === 'Yes' && (
                 <div>
-                  <label className={lbl(false)}>
-                    Baptized Date <span className="text-gray-400 font-normal">(optional)</span>
-                  </label>
-                  <DatePicker
-                    value={head.baptizedDate}
-                    onChange={setHDate('baptizedDate')}
-                    max={today}
-                    placeholder="DD/MM/YYYY"
-                  />
+                  <label className={lbl(false)}>Baptized Date <span className="text-gray-400 font-normal">(optional)</span></label>
+                  <DatePicker value={head.baptizedDate} onChange={setHDate('baptizedDate')} max={today} placeholder="DD/MM/YYYY" />
                 </div>
               )}
-
               <div>
                 <label className={lbl(false)}>Join Date</label>
-                <DatePicker
-                  value={head.joinDate}
-                  onChange={setHDate('joinDate')}
-                  max={today}
-                  placeholder="DD/MM/YYYY"
-                />
+                <DatePicker value={head.joinDate} onChange={setHDate('joinDate')} max={today} placeholder="DD/MM/YYYY" />
               </div>
             </div>
           </FormSection>
 
-          {/* Head — Occupation */}
           <FormSection color="yellow" title="Head Believer — Occupation">
             <div className="grid grid-cols-2 gap-3">
               <div>
@@ -617,7 +506,6 @@ function CreateFamilyModal({ districts,onSuccess, onClose }) {
             </div>
           </FormSection>
 
-          {/* Head — Marital */}
           {!isUnder18 && (
             <FormSection color="pink" title="Head Believer — Marital Status">
               <div className="grid grid-cols-2 gap-3">
@@ -633,32 +521,24 @@ function CreateFamilyModal({ districts,onSuccess, onClose }) {
                   <>
                     <div>
                       <label className={lbl(false)}>Wedding Date</label>
-                      <DatePicker
-                        value={head.weddingDate}
-                        onChange={setHDate('weddingDate')}
-                        max={today}
-                        placeholder="DD/MM/YYYY"
-                      />
+                      <DatePicker value={head.weddingDate} onChange={setHDate('weddingDate')} max={today} placeholder="DD/MM/YYYY" />
                     </div>
                     <div>
                       <label className={lbl(false)}>Spouse Name</label>
-                      <input className={inp(false)} value={head.spouseName}
-                        onChange={setH('spouseName')} placeholder="Spouse name" />
+                      <input className={inp(false)} value={head.spouseName} onChange={setH('spouseName')} placeholder="Spouse name" />
                     </div>
                   </>
                 )}
                 {head.maritalStatus === 'Widowed' && (
                   <div>
                     <label className={lbl(false)}>Late Spouse Name</label>
-                    <input className={inp(false)} value={head.spouseName}
-                      onChange={setH('spouseName')} placeholder="Late spouse name" />
+                    <input className={inp(false)} value={head.spouseName} onChange={setH('spouseName')} placeholder="Late spouse name" />
                   </div>
                 )}
               </div>
             </FormSection>
           )}
         </div>
-
         <div className="px-5 py-4 border-t border-gray-100 flex justify-end gap-3 bg-gray-50 flex-shrink-0">
           <button type="button" onClick={onClose} disabled={saving}
             className="px-5 py-2 border border-gray-200 rounded-lg text-sm font-medium hover:bg-gray-100 disabled:opacity-50">
@@ -683,28 +563,25 @@ function FamilyDetail({ family, onClose, onMemberAdded }) {
   const [members,       setMembers]       = useState([]);
   const [loading,       setLoading]       = useState(false);
   const [showAddMember, setShowAddMember] = useState(false);
-  const [deleteMember,  setDeleteMember]  = useState(null);  // item 4
+  const [deleteMember,  setDeleteMember]  = useState(null);
   const [deleting,      setDeleting]      = useState(false);
 
-  // FIX #2: fetch members on mount so they actually load when panel opens
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
       const { data } = await api.get(`/families/${family._id}`);
       setMembers(data.data?.members || []);
     } catch (err) {
-      toast.error(parseApiError(err));  // item 5
+      toast.error(parseApiError(err));
     } finally {
       setLoading(false);
     }
   }, [family._id]);
 
-  // FIX #2: auto-fetch on open
   useEffect(() => { refresh(); }, [refresh]);
 
   const headMember = members.find((m) => m.isHead);
 
-  // ── item 4: Delete member ────────────────────────────────────────────────
   const handleDeleteMember = async () => {
     if (!deleteMember) return;
     setDeleting(true);
@@ -715,7 +592,7 @@ function FamilyDetail({ family, onClose, onMemberAdded }) {
       refresh();
       onMemberAdded?.();
     } catch (err) {
-      toast.error(parseApiError(err));  // item 5
+      toast.error(parseApiError(err));
     } finally {
       setDeleting(false);
     }
@@ -724,8 +601,6 @@ function FamilyDetail({ family, onClose, onMemberAdded }) {
   return (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-40 flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[92vh] flex flex-col overflow-hidden">
-
-        {/* Header */}
         <div className="bg-gray-900 px-6 py-4 flex items-center justify-between flex-shrink-0">
           <div>
             <p className="text-white font-bold text-lg">{family.familyCode}</p>
@@ -748,7 +623,6 @@ function FamilyDetail({ family, onClose, onMemberAdded }) {
           </div>
         </div>
 
-        {/* Members list */}
         <div className="overflow-y-auto flex-1 p-5 space-y-2">
           {loading ? (
             <div className="flex flex-col items-center justify-center py-14 gap-2">
@@ -762,24 +636,17 @@ function FamilyDetail({ family, onClose, onMemberAdded }) {
               <div
                 key={m._id}
                 className={`flex items-center gap-3 p-3 rounded-xl border transition-colors
-                  ${m.isHead
-                    ? 'border-red-200 bg-red-50/40'
-                    : 'border-gray-100 bg-gray-50/40 hover:bg-gray-100/60'}`}
+                  ${m.isHead ? 'border-red-200 bg-red-50/40' : 'border-gray-100 bg-gray-50/40 hover:bg-gray-100/60'}`}
               >
-                {/* Avatar */}
                 <div className={`w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0
                   ${m.gender === 'Female' ? 'bg-pink-100 text-pink-700' : 'bg-blue-100 text-blue-700'}`}>
                   {m.fullName?.[0]?.toUpperCase()}
                 </div>
-
-                {/* Info */}
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
                     <p className="font-semibold text-gray-800 text-sm truncate">{m.fullName}</p>
                     {m.isHead && (
-                      <span className="text-[10px] font-bold bg-red-800 text-white px-1.5 py-0.5 rounded-full flex-shrink-0">
-                        HEAD
-                      </span>
+                      <span className="text-[10px] font-bold bg-red-800 text-white px-1.5 py-0.5 rounded-full flex-shrink-0">HEAD</span>
                     )}
                     <RelBadge m={m} />
                   </div>
@@ -791,32 +658,25 @@ function FamilyDetail({ family, onClose, onMemberAdded }) {
                     )}
                   </p>
                 </div>
-
-                {/* Right side */}
                 <div className="flex-shrink-0 flex flex-col items-end gap-1.5">
                   {m.membershipStatus !== 'Deceased' && (
                     <span className={`text-xs font-medium px-2 py-0.5 rounded-full
-                    ${m.baptized === 'Yes' ? 'bg-teal-100 text-teal-700' : 'bg-red-50 text-red-500'}`}>
+                      ${m.baptized === 'Yes' ? 'bg-teal-100 text-teal-700' : 'bg-red-50 text-red-500'}`}>
                       {m.baptized === 'Yes' ? '✓ Baptized' : 'Not Baptized'}
                     </span>
-
-                    
                   )}
                   {m.phone && (
                     <p className="text-xs text-gray-400 flex items-center gap-1">
                       <Phone className="w-3 h-3" />{m.phone}
                     </p>
                   )}
-                  {/* item 4: delete button per member */}
                   <button
                     type="button"
                     title={m.isHead ? 'Cannot delete head — assign new head first' : 'Move to Trash'}
                     disabled={m.isHead}
                     onClick={() => !m.isHead && setDeleteMember(m)}
                     className={`flex items-center gap-1 text-xs px-2 py-0.5 rounded-lg transition-colors
-                      ${m.isHead
-                        ? 'text-gray-300 cursor-not-allowed'
-                        : 'text-red-400 hover:text-red-700 hover:bg-red-50'}`}
+                      ${m.isHead ? 'text-gray-300 cursor-not-allowed' : 'text-red-400 hover:text-red-700 hover:bg-red-50'}`}
                   >
                     <Trash2 className="w-3 h-3" />
                     {m.isHead ? 'Head' : 'Remove'}
@@ -834,21 +694,15 @@ function FamilyDetail({ family, onClose, onMemberAdded }) {
         </div>
       </div>
 
-      {/* Add Member Modal */}
       {showAddMember && (
         <AddMemberModal
           familyId={family._id}
-          headMember={headMember}        /* item 10: pass head for weddingDate sync */
-          onSuccess={() => {
-            setShowAddMember(false);
-            refresh();
-            onMemberAdded?.();
-          }}
+          headMember={headMember}
+          onSuccess={() => { setShowAddMember(false); refresh(); onMemberAdded?.(); }}
           onClose={() => setShowAddMember(false)}
         />
       )}
 
-      {/* item 4: Delete member confirm dialog */}
       {deleteMember && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden">
@@ -858,24 +712,16 @@ function FamilyDetail({ family, onClose, onMemberAdded }) {
             </div>
             <div className="p-5 space-y-4">
               <p className="text-sm text-gray-700">
-                Move <strong>{deleteMember.fullName}</strong> to trash?
-                They can be restored from the Trash page.
+                Move <strong>{deleteMember.fullName}</strong> to trash? They can be restored from the Trash page.
               </p>
               <div className="flex gap-3">
-                <button type="button"
-                  onClick={() => setDeleteMember(null)}
-                  disabled={deleting}
+                <button type="button" onClick={() => setDeleteMember(null)} disabled={deleting}
                   className="flex-1 px-4 py-2 border border-gray-200 rounded-lg text-sm font-medium hover:bg-gray-50 disabled:opacity-50">
                   Cancel
                 </button>
-                <button type="button"
-                  onClick={handleDeleteMember}
-                  disabled={deleting}
+                <button type="button" onClick={handleDeleteMember} disabled={deleting}
                   className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-red-700 text-white text-sm font-semibold rounded-lg hover:bg-red-800 disabled:opacity-50">
-                  {deleting
-                    ? <Loader2 className="w-4 h-4 animate-spin" />
-                    : <Trash2 className="w-4 h-4" />
-                  }
+                  {deleting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
                   Move to Trash
                 </button>
               </div>
@@ -890,54 +736,98 @@ function FamilyDetail({ family, onClose, onMemberAdded }) {
 // ─── MAIN PAGE ─────────────────────────────────────────────────────────────────
 
 export default function FamilyManagement() {
-  const [families,     setFamilies]     = useState([]);
-  const [pagination,   setPagination]   = useState({ total: 0, page: 1, totalPages: 1 });
-  const [loading,      setLoading]      = useState(false);
-  const [search,       setSearch]       = useState('');
-  const [statusFilter, setStatusFilter] = useState('');
+  const [families,       setFamilies]       = useState([]);
+  const [allFamilies,    setAllFamilies]    = useState([]); // full unfiltered list for client-side ops
+  const [pagination,     setPagination]     = useState({ total: 0, page: 1, totalPages: 1 });
+  const [loading,        setLoading]        = useState(false);
+  const [search,         setSearch]         = useState('');
+  const [statusFilter,   setStatusFilter]   = useState('');
   const [districtFilter, setDistrictFilter] = useState('');
-  const [showCreate,   setShowCreate]   = useState(false);
-  const [viewFamily,   setViewFamily]   = useState(null);
-  const [editFamily,   setEditFamily] = useState(null);
-  const [deleteTarget, setDeleteTarget] = useState(null);
-  const [deleting,     setDeleting]     = useState(false);
-  const [districts, setDistricts] = useState([]);
+  const [showCreate,     setShowCreate]     = useState(false);
+  const [viewFamily,     setViewFamily]     = useState(null);
+  const [editFamily,     setEditFamily]     = useState(null);
+  const [deleteTarget,   setDeleteTarget]   = useState(null);
+  const [deleting,       setDeleting]       = useState(false);
+  const [districts,      setDistricts]      = useState([]);
 
-  // Fetch districts on mount
+  // Sort state
+  const [sortBy,  setSortBy]  = useState('familyCode'); // 'familyCode' | 'headName'
+  const [sortDir, setSortDir] = useState('asc');
+
   useEffect(() => {
-    const fetchDistricts = async () => {
-      try {
-        const { data } = await api.get('/families/districts');
-        setDistricts(data.data || []);
-      } catch (err) {
-        console.error('Failed to fetch districts:', err);
-        // Fallback to hardcoded list if API fails
-        setDistricts(['Salem', 'Chennai', 'Coimbatore', 'Madurai']);
-      }
-    };
-    fetchDistricts();
+    api.get('/families/districts')
+      .then(({ data }) => setDistricts(data.data || []))
+      .catch(() => setDistricts(['Salem', 'Chennai', 'Coimbatore', 'Madurai']));
   }, []);
 
   const fetchFamilies = useCallback(async (page = 1) => {
     setLoading(true);
     try {
-      const params = new URLSearchParams({ page, limit: 20 });
-      if (search.trim()) params.append('search', search.trim());
-      if (statusFilter)  params.append('status', statusFilter);
-      if (districtFilter) params.append('district', districtFilter);  
+      const params = new URLSearchParams({ page, limit: 500 }); // load more for client sort/search
+      if (statusFilter)   params.append('status',   statusFilter);
+      if (districtFilter) params.append('district', districtFilter);
       const { data } = await api.get(`/families?${params}`);
-      setFamilies(data.data);
-      setPagination(data.pagination);
+      setAllFamilies(data.data || []);
     } catch (err) {
-      toast.error(parseApiError(err));  // item 5
+      toast.error(parseApiError(err));
     } finally {
       setLoading(false);
     }
-  }, [search, statusFilter, districtFilter]);
+  }, [statusFilter, districtFilter]);
 
   useEffect(() => { fetchFamilies(1); }, [statusFilter, districtFilter]);
 
-  const handleSearch   = (e) => { e.preventDefault(); fetchFamilies(1); };
+  // Apply client-side search + sort
+  useEffect(() => {
+    let filtered = [...allFamilies];
+
+    // Dynamic search
+    if (search.trim()) {
+      const term = search.trim().toLowerCase();
+      filtered = filtered.filter(
+        (f) =>
+          f.familyCode?.toLowerCase().includes(term) ||
+          f.headId?.fullName?.toLowerCase().includes(term) ||
+          f.village?.toLowerCase().includes(term) ||
+          f.district?.toLowerCase().includes(term)
+      );
+    }
+
+    // Sort
+    filtered.sort((a, b) => {
+      let aVal = '', bVal = '';
+      if (sortBy === 'headName') {
+        aVal = a.headId?.fullName?.toLowerCase() || '';
+        bVal = b.headId?.fullName?.toLowerCase() || '';
+      } else {
+        aVal = a.familyCode?.toLowerCase() || '';
+        bVal = b.familyCode?.toLowerCase() || '';
+      }
+      if (aVal < bVal) return sortDir === 'asc' ? -1 : 1;
+      if (aVal > bVal) return sortDir === 'asc' ? 1 : -1;
+      return 0;
+    });
+
+    const PAGE_SIZE = 20;
+    setPagination({
+      total: filtered.length,
+      page: 1,
+      totalPages: Math.ceil(filtered.length / PAGE_SIZE),
+    });
+    setFamilies(filtered.slice(0, PAGE_SIZE));
+    // For simplicity keep all in one page view (or paginate client-side below)
+    setFamilies(filtered); // show all filtered/sorted
+    setPagination({ total: filtered.length, page: 1, totalPages: 1 });
+  }, [allFamilies, search, sortBy, sortDir]);
+
+  const handleSort = (field) => {
+    if (sortBy === field) {
+      setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortBy(field);
+      setSortDir('asc');
+    }
+  };
 
   const handleDelete = async () => {
     if (!deleteTarget) return;
@@ -946,51 +836,67 @@ export default function FamilyManagement() {
       await api.delete(`/families/${deleteTarget._id}`);
       toast.success(`Family ${deleteTarget.familyCode} deleted.`);
       setDeleteTarget(null);
-      fetchFamilies(pagination.page);
+      fetchFamilies(1);
     } catch (err) {
-      toast.error(parseApiError(err));  // item 5
+      toast.error(parseApiError(err));
     } finally {
       setDeleting(false);
     }
   };
 
+  const SortTh = ({ field, label, className = '' }) => (
+    <th
+      className={`px-4 py-3 text-left text-xs font-bold uppercase tracking-wider cursor-pointer select-none whitespace-nowrap group ${className}`}
+      onClick={() => handleSort(field)}
+    >
+      <span className="flex items-center gap-1 group-hover:text-red-200 transition-colors">
+        {label}
+        <SortArrow field={field} sortBy={sortBy} sortDir={sortDir} />
+      </span>
+    </th>
+  );
+
   return (
     <div className="space-y-5">
-
       {/* Page Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <h2 className="text-2xl font-bold text-gray-800">Family Management</h2>
           <p className="text-gray-500 text-sm mt-0.5">
             {pagination.total} famil{pagination.total !== 1 ? 'ies' : 'y'}
+            {search.trim() && <span className="ml-1 text-gray-400">· filtered</span>}
           </p>
         </div>
         <div className="flex gap-2">
-          <button type="button" onClick={() => fetchFamilies(pagination.page)}
-            className="btn-secondary">
+          <button type="button" onClick={() => fetchFamilies(1)} className="btn-secondary">
             <RefreshCw className="w-4 h-4" /> Refresh
           </button>
-          <button type="button" onClick={() => setShowCreate(true)}
-            className="btn-primary">
+          <button type="button" onClick={() => setShowCreate(true)} className="btn-primary">
             <Plus className="w-4 h-4" /> Add Family
           </button>
         </div>
       </div>
 
-      {/* Search + filter */}
+      {/* Search + filter — dynamic search */}
       <div className="card !p-3 flex flex-wrap gap-2">
-        <form onSubmit={handleSearch} className="flex gap-2 flex-1 min-w-[200px]">
-          <div className="flex-1 relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-            <input
-              className="w-full pl-9 pr-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-800/30"
-              placeholder="Search code, head name, village…"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-          </div>
-          <button type="submit" className="btn-primary">Search</button>
-        </form>
+        <div className="flex-1 min-w-[200px] relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+          <input
+            className="w-full pl-9 pr-8 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-800/30"
+            placeholder="Search code, head name, village, district…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+          {search && (
+            <button
+              type="button"
+              onClick={() => setSearch('')}
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
         <select
           className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-800/30 bg-white"
           value={statusFilter}
@@ -1000,7 +906,6 @@ export default function FamilyManagement() {
           <option>Active</option>
           <option>Inactive</option>
         </select>
-          {/* NEW: District filter */}
         <select
           className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-800/30 bg-white"
           value={districtFilter}
@@ -1021,21 +926,26 @@ export default function FamilyManagement() {
           <div className="text-center py-16">
             <Users className="w-12 h-12 text-gray-200 mx-auto mb-3" />
             <p className="text-gray-400 font-semibold">No families found</p>
+            {search && <p className="text-gray-300 text-sm mt-1">Try a different search term</p>}
           </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="bg-red-900 text-white">
                 <tr>
-                  {['Family Code','Head Name','District','Village','Members','Active','Status','Actions'].map((h) => (
-                    <th key={h} className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider">{h}</th>
-                  ))}
+                  <SortTh field="familyCode" label="Family Code" />
+                  <SortTh field="headName"   label="Head Name" />
+                  <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider">District</th>
+                  <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider">Village</th>
+                  <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider">Members</th>
+                  <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider">Active</th>
+                  <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider">Status</th>
+                  <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {families.map((fam, i) => (
-                  <tr key={fam._id}
-                    className={`hover:bg-red-50/30 transition-colors ${i % 2 === 1 ? 'bg-gray-50/50' : ''}`}>
+                  <tr key={fam._id} className={`hover:bg-red-50/30 transition-colors ${i % 2 === 1 ? 'bg-gray-50/50' : ''}`}>
                     <td className="px-4 py-3 font-bold text-red-800">{fam.familyCode}</td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2">
@@ -1052,38 +962,26 @@ export default function FamilyManagement() {
                     <td className="px-4 py-3 text-gray-600">{fam.village}</td>
                     <td className="px-4 py-3 text-center font-semibold text-gray-700">{fam.totalMembers}</td>
                     <td className="px-4 py-3 text-center">
-                      <span className="text-xs font-medium bg-green-100 text-green-700 px-2 py-0.5 rounded-full">
-                        {fam.activeCount}
-                      </span>
+                      <span className="text-xs font-medium bg-green-100 text-green-700 px-2 py-0.5 rounded-full">{fam.activeCount}</span>
                     </td>
                     <td className="px-4 py-3">
                       <span className={`text-xs font-semibold px-2 py-0.5 rounded-full
-                        ${fam.familyStatus === 'Active'
-                          ? 'bg-green-100 text-green-700'
-                          : 'bg-red-100 text-red-700'}`}>
+                        ${fam.familyStatus === 'Active' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
                         {fam.familyStatus}
                       </span>
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-1">
-                        {/* View button */}
                         <button type="button" onClick={() => setViewFamily(fam)}
-                          className="p-1.5 rounded-lg text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
-                          title="View members">
+                          className="p-1.5 rounded-lg text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition-colors" title="View members">
                           <Eye className="w-4 h-4" />
                         </button>
-                        
-                        {/* NEW: Edit button */}
                         <button type="button" onClick={() => setEditFamily(fam)}
-                          className="p-1.5 rounded-lg text-gray-400 hover:text-green-600 hover:bg-green-50 transition-colors"
-                          title="Edit family details">
+                          className="p-1.5 rounded-lg text-gray-400 hover:text-green-600 hover:bg-green-50 transition-colors" title="Edit family details">
                           <Edit2 className="w-4 h-4" />
                         </button>
-                        
-                        {/* Delete button */}
                         <button type="button" onClick={() => setDeleteTarget(fam)}
-                          className="p-1.5 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors"
-                          title="Delete family">
+                          className="p-1.5 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors" title="Delete family">
                           <Trash2 className="w-4 h-4" />
                         </button>
                       </div>
@@ -1096,29 +994,6 @@ export default function FamilyManagement() {
         )}
       </div>
 
-      {/* Pagination */}
-      {pagination.totalPages > 1 && (
-        <div className="flex items-center justify-between">
-          <p className="text-sm text-gray-500">
-            Page {pagination.page} of {pagination.totalPages}
-          </p>
-          <div className="flex gap-2">
-            <button type="button"
-              onClick={() => fetchFamilies(pagination.page - 1)}
-              disabled={pagination.page <= 1 || loading}
-              className="btn-secondary text-sm disabled:opacity-40">
-              Previous
-            </button>
-            <button type="button"
-              onClick={() => fetchFamilies(pagination.page + 1)}
-              disabled={pagination.page >= pagination.totalPages || loading}
-              className="btn-secondary text-sm disabled:opacity-40">
-              Next
-            </button>
-          </div>
-        </div>
-      )}
-
       {/* Modals */}
       {showCreate && (
         <CreateFamilyModal
@@ -1128,15 +1003,11 @@ export default function FamilyManagement() {
         />
       )}
 
-      {/* Edit Family Modal */}
       {editFamily && (
         <EditFamilyModal
           family={editFamily}
           districts={districts}
-          onSuccess={() => {
-            setEditFamily(null);
-            fetchFamilies(pagination.page);
-          }}
+          onSuccess={() => { setEditFamily(null); fetchFamilies(1); }}
           onClose={() => setEditFamily(null)}
         />
       )}
@@ -1145,11 +1016,10 @@ export default function FamilyManagement() {
         <FamilyDetail
           family={viewFamily}
           onClose={() => setViewFamily(null)}
-          onMemberAdded={() => fetchFamilies(pagination.page)}
+          onMemberAdded={() => fetchFamilies(1)}
         />
       )}
 
-      {/* Delete Family confirm */}
       {deleteTarget && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden">
