@@ -172,10 +172,6 @@ function BelieversModal({ title, filter, icon, color, onClose }) {
   }, []);
 
   const rows = data.map((b, i) => {
-    const relationLabel =
-      b.relationshipToHead === 'Other' && b.relationCustom
-        ? b.relationCustom
-        : b.relationshipToHead || '—';
     return (
       <tr key={b._id} className={`hover:bg-gray-50 transition-colors ${genderRowCls(b.gender)}`}>
         <td className="px-4 py-2.5 text-gray-400 font-medium text-xs">{i + 1}</td>
@@ -186,7 +182,6 @@ function BelieversModal({ title, filter, icon, color, onClose }) {
           </div>
         </td>
         <td className="px-4 py-2.5 text-gray-600 text-sm">{calcAge(b.dob) ?? '—'}</td>
-        <td className="px-4 py-2.5 text-gray-600 text-xs">{relationLabel}</td>
         <td className="px-4 py-2.5 text-gray-600 text-xs">{b.familyId?.village || '—'}</td>
         <td className="px-4 py-2.5 text-gray-600 text-xs">{b.phone || '—'}</td>
       </tr>
@@ -200,7 +195,7 @@ function BelieversModal({ title, filter, icon, color, onClose }) {
         <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-pink-400 inline-block" /> Female</span>
       </div>
       <ModalTable
-        headers={['S.No', 'Name', 'Age', 'Relation', 'Village', 'Phone']}
+        headers={['S.No', 'Name', 'Age', 'Village', 'Phone']}
         rows={rows}
         emptyMsg="No records found."
       />
@@ -225,10 +220,6 @@ function YouthModal({ onClose }) {
   }, []);
 
   const rows = data.map((b, i) => {
-    const relationLabel =
-      b.relationshipToHead === 'Other' && b.relationCustom
-        ? b.relationCustom
-        : b.relationshipToHead || '—';
     return (
       <tr key={b._id} className={`hover:bg-gray-50 transition-colors ${genderRowCls(b.gender)}`}>
         <td className="px-4 py-2.5 text-gray-400 font-medium text-xs">{i + 1}</td>
@@ -239,7 +230,6 @@ function YouthModal({ onClose }) {
           </div>
         </td>
         <td className="px-4 py-2.5 text-gray-600 text-sm">{calcAge(b.dob) ?? '—'}</td>
-        <td className="px-4 py-2.5 text-gray-600 text-xs">{relationLabel}</td>
         <td className="px-4 py-2.5 text-gray-600 text-xs">{b.familyId?.village || '—'}</td>
         <td className="px-4 py-2.5 text-gray-600 text-xs">{b.phone || '—'}</td>
         <td className="px-4 py-2.5 text-xs">
@@ -256,7 +246,7 @@ function YouthModal({ onClose }) {
         <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-pink-400 inline-block" /> Female</span>
       </div>
       <ModalTable
-        headers={['S.No', 'Name', 'Age', 'Relation', 'Village', 'Phone', 'Occupation']}
+        headers={['S.No', 'Name', 'Age', 'Village', 'Phone', 'Occupation']}
         rows={rows}
         emptyMsg="No youth records found."
       />
@@ -281,10 +271,6 @@ function ChildrenModal({ onClose }) {
   }, []);
 
   const rows = data.map((b, i) => {
-    const relationLabel =
-      b.relationshipToHead === 'Other' && b.relationCustom
-        ? b.relationCustom
-        : b.relationshipToHead || '—';
     return (
       <tr key={b._id} className={`hover:bg-gray-50 transition-colors ${genderRowCls(b.gender)}`}>
         <td className="px-4 py-2.5 text-gray-400 font-medium text-xs">{i + 1}</td>
@@ -295,7 +281,6 @@ function ChildrenModal({ onClose }) {
           </div>
         </td>
         <td className="px-4 py-2.5 text-gray-600 text-sm">{calcAge(b.dob) ?? '—'}</td>
-        <td className="px-4 py-2.5 text-gray-600 text-xs">{relationLabel}</td>
         <td className="px-4 py-2.5 text-gray-600 text-xs">{b.familyId?.village || '—'}</td>
       </tr>
     );
@@ -308,7 +293,7 @@ function ChildrenModal({ onClose }) {
         <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-pink-400 inline-block" /> Female</span>
       </div>
       <ModalTable
-        headers={['S.No', 'Name', 'Age', 'Relation', 'Village']}
+        headers={['S.No', 'Name', 'Age', 'Village']}
         rows={rows}
         emptyMsg="No children records found."
       />
@@ -351,7 +336,7 @@ function CouplesModal({ onClose }) {
         <td className="px-4 py-2.5 text-gray-400 font-medium text-xs">{i + 1}</td>
         <td className="px-4 py-2.5">
           <span className="font-medium text-gray-800">{b.fullName}</span>
-          <span className="text-gray-400 mx-1.5">—</span>
+          <span className="text-gray-400 mx-1.5">♥</span>
           <span className="font-medium text-gray-700">{spouseName}</span>
         </td>
         <td className="px-4 py-2.5 text-gray-600 text-xs">{b.familyId?.village || '—'}</td>
@@ -387,10 +372,6 @@ function StudentsModal({ onClose }) {
   }, []);
 
   const rows = data.map((b, i) => {
-    const relationLabel =
-      b.relationshipToHead === 'Other' && b.relationCustom
-        ? b.relationCustom
-        : b.relationshipToHead || '—';
     return (
       <tr key={b._id} className={`hover:bg-gray-50 transition-colors ${genderRowCls(b.gender)}`}>
         <td className="px-4 py-2.5 text-gray-400 font-medium text-xs">{i + 1}</td>
@@ -401,7 +382,6 @@ function StudentsModal({ onClose }) {
           </div>
         </td>
         <td className="px-4 py-2.5 text-gray-600 text-sm">{calcAge(b.dob) ?? '—'}</td>
-        <td className="px-4 py-2.5 text-gray-600 text-xs">{relationLabel}</td>
         <td className="px-4 py-2.5 text-xs">
           {b.educationLevel ? (
             <span className="bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full font-medium">{b.educationLevel}</span>
@@ -418,7 +398,7 @@ function StudentsModal({ onClose }) {
         <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-pink-400 inline-block" /> Female</span>
       </div>
       <ModalTable
-        headers={['S.No', 'Name', 'Age', 'Relation', 'Education Level']}
+        headers={['S.No', 'Name', 'Age', 'Education Level']}
         rows={rows}
         emptyMsg="No students found."
       />
@@ -446,10 +426,6 @@ function EmployedModal({ onClose }) {
   }, []);
 
   const rows = data.map((b, i) => {
-    const relationLabel =
-      b.relationshipToHead === 'Other' && b.relationCustom
-        ? b.relationCustom
-        : b.relationshipToHead || '—';
     return (
       <tr key={b._id} className={`hover:bg-gray-50 transition-colors ${genderRowCls(b.gender)}`}>
         <td className="px-4 py-2.5 text-gray-400 font-medium text-xs">{i + 1}</td>
@@ -460,7 +436,6 @@ function EmployedModal({ onClose }) {
           </div>
         </td>
         <td className="px-4 py-2.5 text-gray-600 text-sm">{calcAge(b.dob) ?? '—'}</td>
-        <td className="px-4 py-2.5 text-gray-600 text-xs">{relationLabel}</td>
         <td className="px-4 py-2.5 text-gray-600 text-xs">{b.familyId?.village || '—'}</td>
         <td className="px-4 py-2.5 text-xs">
           <span className="bg-teal-100 text-teal-700 px-2 py-0.5 rounded-full font-medium">{b.occupationCategory || '—'}</span>
@@ -476,7 +451,7 @@ function EmployedModal({ onClose }) {
         <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-pink-400 inline-block" /> Female</span>
       </div>
       <ModalTable
-        headers={['S.No', 'Name', 'Age', 'Relation', 'Village', 'Occupation']}
+        headers={['S.No', 'Name', 'Age', 'Village', 'Occupation']}
         rows={rows}
         emptyMsg="No employed members found."
       />
