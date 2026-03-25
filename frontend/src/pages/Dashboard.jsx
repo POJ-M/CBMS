@@ -362,7 +362,7 @@ function CouplesModal({ onClose }) {
   return (
     <DetailModal title="Married Couples" icon={Heart} color="bg-pink-600" onClose={onClose} loading={loading} count={data.length}>
       <ModalTable
-        headers={['S.No', 'Spouse Names (Husband — Wife)', 'Village']}
+        headers={['S.No', 'Spouse Names', 'Village']}
         rows={rows}
         emptyMsg="No married couples found."
       />
