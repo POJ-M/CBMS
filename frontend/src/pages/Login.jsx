@@ -56,11 +56,11 @@ export default function Login() {
         <div className="w-full max-w-md bg-white shadow-2xl rounded-3xl p-10">
 
           <h2 className="text-2xl font-bold text-gray-800 mb-2">
-            Admin Login
+            Login
           </h2>
 
           <p className="text-gray-500 text-sm mb-8">
-            Enter your credentials to access dashboard
+            Enter your credentials to access portal
           </p>
 
           <form onSubmit={handleSubmit} className="space-y-6">
