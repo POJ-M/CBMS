@@ -1,60 +1,58 @@
 /**
  * BelieverManagement.jsx
+ * Changes:
+ *  - "View" action button: full detail card modal for each believer
+ *  - Relation column shows head name like "Son of Samuel Raj" (marital-style display)
+ *  - DOB is optional in Edit modal
  **/
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
-  Search, Filter, Edit2, Trash2, X, ChevronUp, ChevronDown,
+  Search, Filter, Edit2, Trash2, Eye, X, ChevronUp, ChevronDown,
   ChevronsUpDown, Loader2, RefreshCw, User, Users, ArrowUpDown,
-  AlertTriangle, CheckCircle, Info,
+  AlertTriangle, CheckCircle, Info, Phone, Mail, MapPin,
+  Calendar, Droplets, Heart, Briefcase, GraduationCap, UserCheck,
 } from 'lucide-react';
 import api from '../api/axios';
 import toast from 'react-hot-toast';
 import { formatDate, calcAge } from '../utils/helpers';
 
 // ─── CONSTANTS ────────────────────────────────────────────────────────────────
-
-const GENDER_OPTIONS      = ['Male', 'Female', 'Other'];
-const MEMBER_TYPE_OPTIONS = ['Member', 'Youth', 'Child'];
+const GENDER_OPTIONS        = ['Male', 'Female', 'Other'];
+const MEMBER_TYPE_OPTIONS   = ['Member', 'Youth', 'Child'];
 const MEMBER_STATUS_OPTIONS = ['Active', 'Inactive', 'Deceased', 'Transferred'];
-const MARITAL_OPTIONS     = ['Single', 'Married', 'Widowed'];
-const BAPTIZED_OPTIONS    = ['Yes', 'No'];
-const EDUCATION_OPTIONS   = ['School', 'College'];
-const OCCUPATION_OPTIONS  = [
-  'Ministry','Employed', 'Self-Employed', 'Business', 'Agriculture', 'Daily wages', 'House-Wife',
-  'Student', 'Retired', 'Non-Worker', 'Child',
+const MARITAL_OPTIONS       = ['Single', 'Married', 'Widowed'];
+const BAPTIZED_OPTIONS      = ['Yes', 'No'];
+const EDUCATION_OPTIONS     = ['School', 'College'];
+const OCCUPATION_OPTIONS    = [
+  'Ministry','Employed','Self-Employed','Business','Agriculture','Daily wages','House-Wife',
+  'Student','Retired','Non-Worker','Child',
 ];
-
 const EDITABLE_FIELDS = [
-  'fullName','tamilName', 'dob', 'gender', 'phone', 'email',
-  'memberType', 'membershipStatus', 'joinDate',
-  'baptized', 'baptizedDate',
-  'maritalStatus', 'weddingDate', 'spouseId', 'spouseName',
-  'occupationCategory', 'educationLevel',
+  'fullName','tamilName','dob','gender','phone','email',
+  'memberType','membershipStatus','joinDate','baptized','baptizedDate',
+  'maritalStatus','weddingDate','spouseId','spouseName',
+  'occupationCategory','educationLevel',
 ];
 
 // ─── BADGE HELPERS ────────────────────────────────────────────────────────────
-
 const TypeBadge = ({ type }) => {
   const cls = {
-    Member: 'bg-blue-100 text-blue-800',
-    Youth:  'bg-purple-100 text-purple-800',
-    Child:  'bg-yellow-100 text-yellow-700',
+    Member:   'bg-blue-100 text-blue-800',
+    Youth:    'bg-purple-100 text-purple-800',
+    Child:    'bg-yellow-100 text-yellow-700',
+    Deceased: 'bg-gray-200 text-gray-600',
   }[type] || 'bg-gray-100 text-gray-600';
   return <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${cls}`}>{type || '—'}</span>;
 };
 
 const StatusBadge = ({ status }) => (
   <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
-    status === "Active"
-        ? "bg-green-100 text-green-700"
-        : status === "Inactive"
-        ? "bg-red-100 text-red-700"
-        : status === "Deceased"
-        ? "bg-gray-200 text-gray-700"
-        : status === "Transferred"
-        ? "bg-yellow-100 text-yellow-700"
-        : "bg-gray-100 text-gray-600"
+    status === 'Active'       ? 'bg-green-100 text-green-700'
+    : status === 'Inactive'  ? 'bg-red-100 text-red-700'
+    : status === 'Deceased'  ? 'bg-gray-200 text-gray-700'
+    : status === 'Transferred' ? 'bg-yellow-100 text-yellow-700'
+    : 'bg-gray-100 text-gray-600'
   }`}>{status}</span>
 );
 
@@ -65,7 +63,6 @@ const BapBadge = ({ val }) => (
 );
 
 // ─── SORT ARROW ───────────────────────────────────────────────────────────────
-
 const SortArrow = ({ field, sortBy, sortDir }) => {
   if (sortBy !== field) return <ChevronsUpDown className="w-3.5 h-3.5 text-gray-300 ml-1 flex-shrink-0" />;
   return sortDir === 'asc'
@@ -73,21 +70,225 @@ const SortArrow = ({ field, sortBy, sortDir }) => {
     : <ChevronDown className="w-3.5 h-3.5 text-red-800 ml-1 flex-shrink-0" />;
 };
 
-// ─── CONFIRM DELETE DIALOG ────────────────────────────────────────────────────
+// ─── RELATION DISPLAY HELPER ──────────────────────────────────────────────────
+// Returns e.g. "Son of Samuel Raj" or "Self (Head)"
+const buildRelationLabel = (b) => {
+  if (b.isHead) return 'Self (Head)';
+  const rel = b.relationshipToHead === 'Other' && b.relationCustom
+    ? b.relationCustom : b.relationshipToHead;
+  if (!rel) return '—';
+  // We need the head name — it's on the familyId if populated
+  const headName = b.familyId?.headId?.fullName || null;
+  if (headName && rel !== 'Self') return `${rel} of ${headName}`;
+  return rel;
+};
 
+// Compact version for table column (no head name, just relation)
+const relLabel = (b) => {
+  if (b.isHead) return 'Self';
+  return b.relationshipToHead === 'Other' && b.relationCustom
+    ? b.relationCustom : b.relationshipToHead || '—';
+};
+
+// ─── VIEW MODAL (full believer detail) ───────────────────────────────────────
+function ViewModal({ believerId, onClose }) {
+  const [believer, setBeliever] = useState(null);
+  const [loading,  setLoading]  = useState(true);
+
+  useEffect(() => {
+    api.get(`/believers/${believerId}`)
+      .then(({ data }) => setBeliever(data.data))
+      .catch(() => toast.error('Failed to load believer details'))
+      .finally(() => setLoading(false));
+  }, [believerId]);
+
+  useEffect(() => {
+    const h = (e) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', h);
+    return () => document.removeEventListener('keydown', h);
+  }, [onClose]);
+
+  // Gender avatar colour
+  const avatarCls = believer?.gender === 'Female'
+    ? 'bg-pink-100 text-pink-700' : 'bg-blue-100 text-blue-700';
+
+  const InfoRow = ({ icon: Icon, label, value, badge }) => {
+    if (!value && !badge) return null;
+    return (
+      <div className="flex items-start gap-3 py-2.5 border-b border-gray-50 last:border-0">
+        <div className="w-7 h-7 rounded-lg bg-gray-100 flex items-center justify-center flex-shrink-0 mt-0.5">
+          <Icon className="w-3.5 h-3.5 text-gray-500" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-xs text-gray-400 font-medium mb-0.5">{label}</p>
+          {badge
+            ? <div>{badge}</div>
+            : <p className="text-sm text-gray-800 font-medium">{value}</p>
+          }
+        </div>
+      </div>
+    );
+  };
+
+  const Section = ({ title, children, color = 'gray' }) => (
+    <div className={`bg-${color}-50/40 rounded-xl p-4 space-y-0.5 border border-${color}-100/60`}>
+      <p className={`text-xs font-bold text-${color}-600 uppercase tracking-wide mb-2`}>{title}</p>
+      {children}
+    </div>
+  );
+
+  return (
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-xl max-h-[92vh] flex flex-col overflow-hidden">
+
+        {/* Header */}
+        <div className="bg-red-800 px-6 py-4 flex items-center justify-between flex-shrink-0">
+          <div className="flex items-center gap-3">
+            <Eye className="w-5 h-5 text-red-200" />
+            <div>
+              <h3 className="text-white font-bold text-lg leading-tight">Believer Detail</h3>
+              <p className="text-red-200 text-xs mt-0.5">Full profile view</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="text-red-200 hover:text-white transition-colors p-1">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {loading ? (
+          <div className="flex items-center justify-center py-20">
+            <Loader2 className="w-8 h-8 animate-spin text-gray-300" />
+          </div>
+        ) : !believer ? (
+          <div className="p-8 text-center text-gray-400">Could not load believer details.</div>
+        ) : (
+          <div className="overflow-y-auto flex-1 p-5 space-y-4">
+
+            {/* ── Profile Hero ── */}
+            <div className="flex items-center gap-4 p-4 bg-gray-50 rounded-2xl border border-gray-100">
+              <div className={`w-16 h-16 rounded-2xl flex items-center justify-center text-2xl font-bold flex-shrink-0 ${avatarCls}`}>
+                {believer.fullName?.[0]?.toUpperCase()}
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h4 className="text-xl font-bold text-gray-800 leading-tight">{believer.fullName}</h4>
+                  {believer.isHead && (
+                    <span className="text-xs font-bold bg-red-800 text-white px-2 py-0.5 rounded-full">HEAD</span>
+                  )}
+                </div>
+                {believer.tamilName && (
+                  <p className="text-sm text-gray-500 mt-0.5">{believer.tamilName}</p>
+                )}
+                <div className="flex items-center gap-2 mt-2 flex-wrap">
+                  <StatusBadge status={believer.membershipStatus} />
+                  <TypeBadge type={believer.memberType} />
+                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                    believer.gender === 'Female' ? 'bg-pink-100 text-pink-700' : 'bg-blue-100 text-blue-700'
+                  }`}>{believer.gender}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* ── Relation & Family ── */}
+            <Section title="Family & Relation" color="red">
+              <InfoRow icon={Users}    label="Family Code" value={believer.familyId?.familyCode || '—'} />
+              <InfoRow icon={MapPin}   label="Village"     value={believer.familyId?.village || '—'} />
+              <InfoRow icon={User}     label="Relationship to Head"
+                value={
+                  believer.isHead ? 'Self (Head)' :
+                  believer.relationshipToHead === 'Other' && believer.relationCustom
+                    ? `Other — ${believer.relationCustom}`
+                    : believer.relationshipToHead || '—'
+                }
+              />
+              {believer.joinDate && <InfoRow icon={Calendar} label="Join Date" value={formatDate(believer.joinDate)} />}
+            </Section>
+
+            {/* ── Personal Info ── */}
+            <Section title="Personal Information" color="blue">
+              <InfoRow icon={Calendar}
+                label="Date of Birth"
+                value={believer.dob
+                  ? `${formatDate(believer.dob)} (Age: ${calcAge(believer.dob)} yrs)`
+                  : '—'
+                }
+              />
+              {believer.phone && <InfoRow icon={Phone}  label="Phone" value={believer.phone} />}
+              {believer.email && <InfoRow icon={Mail}   label="Email" value={believer.email} />}
+            </Section>
+
+            {/* ── Church Details ── */}
+            <Section title="Church Details" color="green">
+              <InfoRow icon={Droplets}   label="Baptized"    badge={<BapBadge val={believer.baptized} />} />
+              {believer.baptized === 'Yes' && believer.baptizedDate && (
+                <InfoRow icon={Calendar} label="Baptized Date" value={formatDate(believer.baptizedDate)} />
+              )}
+            </Section>
+
+            {/* ── Marital ── */}
+            {believer.maritalStatus && (
+              <Section title="Marital Status" color="pink">
+                <InfoRow icon={Heart} label="Marital Status" value={believer.maritalStatus} />
+                {believer.weddingDate && (
+                  <InfoRow icon={Calendar} label="Wedding Date" value={formatDate(believer.weddingDate)} />
+                )}
+                {(believer.spouseId || believer.spouseName) && (
+                  <InfoRow
+                    icon={User}
+                    label="Spouse"
+                    value={
+                      (typeof believer.spouseId === 'object' ? believer.spouseId?.fullName : null)
+                      || believer.spouseName || '—'
+                    }
+                  />
+                )}
+              </Section>
+            )}
+
+            {/* ── Occupation ── */}
+            <Section title="Occupation" color="yellow">
+              <InfoRow icon={Briefcase}       label="Occupation"      value={believer.occupationCategory || '—'} />
+              {believer.educationLevel && (
+                <InfoRow icon={GraduationCap} label="Education Level" value={believer.educationLevel} />
+              )}
+            </Section>
+
+            {/* ── Timestamps ── */}
+            <div className="grid grid-cols-2 gap-3 text-xs text-gray-400">
+              <div className="bg-gray-50 rounded-lg p-3">
+                <p className="font-semibold text-gray-500 mb-1">Created</p>
+                <p>{believer.createdAt ? formatDate(believer.createdAt) : '—'}</p>
+              </div>
+              <div className="bg-gray-50 rounded-lg p-3">
+                <p className="font-semibold text-gray-500 mb-1">Last Updated</p>
+                <p>{believer.updatedAt ? formatDate(believer.updatedAt) : '—'}</p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        <div className="px-5 py-3 border-t border-gray-100 flex justify-end bg-gray-50 flex-shrink-0">
+          <button onClick={onClose}
+            className="px-5 py-2 bg-red-800 text-white rounded-lg text-sm font-semibold hover:bg-red-900 transition-colors">
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── CONFIRM DELETE DIALOG ────────────────────────────────────────────────────
 function DeleteConfirm({ believer, familyMembers, onConfirm, onCancel, loading }) {
   const [newHeadId, setNewHeadId] = useState('');
   const needsHeadReassign = believer?.isHead;
   const candidates = familyMembers.filter((m) => m._id !== believer?._id && !m.isDeleted);
-
   return (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
         <div className={`px-6 py-4 flex items-center gap-3 ${needsHeadReassign ? 'bg-amber-600' : 'bg-red-800'}`}>
           <AlertTriangle className="w-5 h-5 text-white" />
-          <h3 className="text-white font-bold">
-            {needsHeadReassign ? 'Assign New Head First' : 'Move to Trash'}
-          </h3>
+          <h3 className="text-white font-bold">{needsHeadReassign ? 'Assign New Head First' : 'Move to Trash'}</h3>
         </div>
         <div className="p-6 space-y-4">
           {needsHeadReassign ? (
@@ -135,63 +336,42 @@ function DeleteConfirm({ believer, familyMembers, onConfirm, onCancel, loading }
 }
 
 // ─── EDIT MODAL ───────────────────────────────────────────────────────────────
-
 function EditModal({ believer, familyMembers, onSave, onClose }) {
-  const [form, setForm] = useState({});
+  const [form,   setForm]   = useState({});
   const [saving, setSaving] = useState(false);
 
-  // Pre-fill form from believer on open
   useEffect(() => {
     if (!believer) return;
     setForm({
-      fullName:          believer.fullName || '',
-      tamilName:         believer.tamilName || '',
-      dob:               believer.dob ? believer.dob.split('T')[0] : '',
-      gender:            believer.gender || '',
-      phone:             believer.phone || '',
-      email:             believer.email || '',
-      memberType:        believer.memberType || '',
-      membershipStatus:  believer.membershipStatus || 'Active',
-      joinDate:          believer.joinDate ? believer.joinDate.split('T')[0] : '',
-      baptized:          believer.baptized || '',
-      baptizedDate:      believer.baptizedDate ? believer.baptizedDate.split('T')[0] : '',
-      maritalStatus:     believer.maritalStatus || '',
-      weddingDate:       believer.weddingDate ? believer.weddingDate.split('T')[0] : '',
-      // spouseId: store the ObjectId string; show dropdown to change link
-      spouseId:          (typeof believer.spouseId === 'object' ? believer.spouseId?._id : believer.spouseId) || '',
-      spouseName:        believer.spouseName || (typeof believer.spouseId === 'object' ? believer.spouseId?.fullName : '') || '',
+      fullName:           believer.fullName || '',
+      tamilName:          believer.tamilName || '',
+      dob:                believer.dob ? believer.dob.split('T')[0] : '',
+      gender:             believer.gender || '',
+      phone:              believer.phone || '',
+      email:              believer.email || '',
+      memberType:         believer.memberType || '',
+      membershipStatus:   believer.membershipStatus || 'Active',
+      joinDate:           believer.joinDate ? believer.joinDate.split('T')[0] : '',
+      baptized:           believer.baptized || '',
+      baptizedDate:       believer.baptizedDate ? believer.baptizedDate.split('T')[0] : '',
+      maritalStatus:      believer.maritalStatus || '',
+      weddingDate:        believer.weddingDate ? believer.weddingDate.split('T')[0] : '',
+      spouseId:           (typeof believer.spouseId === 'object' ? believer.spouseId?._id : believer.spouseId) || '',
+      spouseName:         believer.spouseName || (typeof believer.spouseId === 'object' ? believer.spouseId?.fullName : '') || '',
       occupationCategory: believer.occupationCategory || '',
-      educationLevel:    believer.educationLevel || '',
+      educationLevel:     believer.educationLevel || '',
     });
   }, [believer]);
 
-  const age = useMemo(() => (form.dob ? calcAge(form.dob) : null), [form.dob]);
-  const isUnder18  = age !== null && age < 18;
-  const isUnder6   = age !== null && age <= 5;
+  const age       = useMemo(() => (form.dob ? calcAge(form.dob) : null), [form.dob]);
+  const isUnder18 = age !== null && age < 18;
+  const isUnder6  = age !== null && age <= 5;
 
-  // When age drops under 18 → reset marriage fields
-  useEffect(() => {
-    if (isUnder18) {
-      setForm((f) => ({ ...f, maritalStatus: 'Single', spouseId: '', weddingDate: '' }));
-    }
-  }, [isUnder18]);
-
-  // When age drops to 5 or under → lock occupation
-  useEffect(() => {
-    if (isUnder6) setForm((f) => ({ ...f, occupationCategory: 'Child' }));
-  }, [isUnder6]);
+  useEffect(() => { if (isUnder18) setForm((f) => ({ ...f, maritalStatus: 'Single', spouseId: '', weddingDate: '' })); }, [isUnder18]);
+  useEffect(() => { if (isUnder6)  setForm((f) => ({ ...f, occupationCategory: 'Child' })); }, [isUnder6]);
 
   const set = (field) => (e) => setForm((f) => ({ ...f, [field]: e.target.value }));
 
-  const handleBaptizedChange = (val) => {
-    setForm((f) => ({ ...f, baptized: val, baptizedDate: val === 'No' ? '' : f.baptizedDate }));
-  };
-
-  const handleOccupationChange = (val) => {
-    setForm((f) => ({ ...f, occupationCategory: val, educationLevel: val !== 'Student' ? '' : f.educationLevel }));
-  };
-
-  // Spouse candidates from same family (exclude self)
   const spouseCandidates = (familyMembers || []).filter(
     (m) => m._id !== believer?._id && !m.isDeleted && m.maritalStatus !== 'Single'
   );
@@ -200,16 +380,14 @@ function EditModal({ believer, familyMembers, onSave, onClose }) {
     e.preventDefault();
     setSaving(true);
     try {
-      // Build payload — sanitize empty strings
       const payload = {};
       EDITABLE_FIELDS.forEach((key) => {
         if (form[key] === undefined) return;
-        if (key === 'spouseId')      payload[key] = form[key] === '' ? null : form[key];
+        if (key === 'spouseId')       payload[key] = form[key] === '' ? null : form[key];
         else if (key === 'educationLevel') { if (form[key] !== '') payload[key] = form[key]; }
         else if (key === 'weddingDate')    { if (form[key] !== '') payload[key] = form[key]; }
         else payload[key] = form[key];
       });
-
       await api.put(`/believers/${believer._id}`, payload);
       toast.success('Believer updated successfully!');
       onSave();
@@ -222,16 +400,15 @@ function EditModal({ believer, familyMembers, onSave, onClose }) {
 
   if (!believer) return null;
 
-  const inp = 'w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-800/30 focus:border-red-800 transition-colors bg-white';
-  const sel = inp + ' cursor-pointer';
-  const lbl = 'block text-xs font-semibold text-gray-600 mb-1';
-  const ro  = 'w-full border border-gray-100 rounded-lg px-3 py-2 text-sm bg-gray-50 text-gray-500 cursor-not-allowed';
-  const sect = (color) => `bg-${color}-50/40 rounded-xl p-4 space-y-3 border border-${color}-100`;
+  const inp  = 'w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-800/30 focus:border-red-800 transition-colors bg-white';
+  const sel  = inp + ' cursor-pointer';
+  const lbl  = 'block text-xs font-semibold text-gray-600 mb-1';
+  const ro   = 'w-full border border-gray-100 rounded-lg px-3 py-2 text-sm bg-gray-50 text-gray-500 cursor-not-allowed';
+  const sect = (c) => `bg-${c}-50/40 rounded-xl p-4 space-y-3 border border-${c}-100`;
 
   return (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
-        {/* Header */}
         <div className="bg-red-800 px-6 py-4 flex items-center justify-between flex-shrink-0">
           <div>
             <h3 className="text-white font-bold text-lg">Edit Believer</h3>
@@ -242,54 +419,40 @@ function EditModal({ believer, familyMembers, onSave, onClose }) {
           </button>
         </div>
 
-        {/* Body */}
         <form onSubmit={handleSubmit} className="overflow-y-auto flex-1 p-6 space-y-5">
-
-          {/* ── Relationship Details (READ-ONLY) ──────────────────────────────
-              These fields are locked after creation. Displayed for reference.
-          ─────────────────────────────────────────────────────────────────── */}
+          {/* Read-only relationship */}
           <div className="bg-gray-50 rounded-xl p-4 border border-gray-200">
             <p className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-3 flex items-center gap-1.5">
-              <Info className="w-3.5 h-3.5" />
-              Relationship Details — Read Only
+              <Info className="w-3.5 h-3.5" /> Relationship Details — Read Only
             </p>
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className={lbl}>Family</label>
-                <div className={ro}>
-                  {believer.familyId?.familyCode || '—'}
-                  {believer.familyId?.village ? ` · ${believer.familyId.village}` : ''}
-                </div>
+                <div className={ro}>{believer.familyId?.familyCode || '—'}{believer.familyId?.village ? ` · ${believer.familyId.village}` : ''}</div>
               </div>
               <div>
                 <label className={lbl}>Relationship to Head</label>
                 <div className={ro}>
-                  {/* Show custom label for 'Other', otherwise show the relation */}
                   {believer.relationshipToHead === 'Other' && believer.relationCustom
-                    ? `Other (${believer.relationCustom})`
-                    : believer.relationshipToHead || '—'}
+                    ? `Other (${believer.relationCustom})` : believer.relationshipToHead || '—'}
                 </div>
               </div>
               <div>
                 <label className={lbl}>Role in Family</label>
                 <div className={ro}>
-                  {believer.isHead ? (
-                    <span className="inline-flex items-center gap-1 text-red-800 font-semibold">
-                      <Users className="w-3.5 h-3.5" /> Family Head
-                    </span>
-                  ) : 'Member'}
+                  {believer.isHead
+                    ? <span className="inline-flex items-center gap-1 text-red-800 font-semibold"><Users className="w-3.5 h-3.5" /> Family Head</span>
+                    : 'Member'}
                 </div>
               </div>
               <div>
                 <label className={lbl}>Joined</label>
-                <div className={ro}>
-                  {believer.joinDate ? formatDate(believer.joinDate) : '—'}
-                </div>
+                <div className={ro}>{believer.joinDate ? formatDate(believer.joinDate) : '—'}</div>
               </div>
             </div>
           </div>
 
-          {/* ── Personal Info ─────────────────────────────────────────────── */}
+          {/* Personal */}
           <div className={sect('blue')}>
             <p className="text-xs font-bold text-blue-700 uppercase tracking-wide">Personal Information</p>
             <div className="grid grid-cols-2 gap-3">
@@ -298,19 +461,20 @@ function EditModal({ believer, familyMembers, onSave, onClose }) {
                 <input className={inp} value={form.fullName || ''} onChange={set('fullName')} required />
               </div>
               <div className="col-span-2">
-                <label className={lbl}>Tamil Name </label>
-                <input className={inp} value={form.tamilName || ''} onChange={set('tamilName')}  />
+                <label className={lbl}>Tamil Name</label>
+                <input className={inp} value={form.tamilName || ''} onChange={set('tamilName')} />
               </div>
               <div>
-                <label className={lbl}>Date of Birth *</label>
+                {/* DOB — OPTIONAL */}
+                <label className={lbl}>
+                  Date of Birth <span className="text-gray-400 font-normal">(optional)</span>
+                </label>
                 <input type="date" className={inp} value={form.dob || ''} onChange={set('dob')}
-                  max={new Date().toISOString().split('T')[0]} required />
-                {age !== null && (
-                  <p className="text-xs mt-1 text-gray-400">
-                    Age: <strong className="text-red-800">{age}</strong> yrs
-                    {isUnder18 && <span className="text-amber-600 ml-2">· Under 18 — marital fields hidden</span>}
-                  </p>
-                )}
+                  max={new Date().toISOString().split('T')[0]} />
+                {age !== null
+                  ? <p className="text-xs mt-1 text-gray-400">Age: <strong className="text-red-800">{age}</strong> yrs{isUnder18 && <span className="text-amber-600 ml-2">· Under 18</span>}</p>
+                  : <p className="text-xs mt-1 text-gray-400">Age shown when DOB is provided</p>
+                }
               </div>
               <div>
                 <label className={lbl}>Gender *</label>
@@ -321,8 +485,7 @@ function EditModal({ believer, familyMembers, onSave, onClose }) {
               </div>
               <div>
                 <label className={lbl}>Phone</label>
-                <input className={inp} value={form.phone || ''} onChange={set('phone')}
-                  placeholder="10 digits" maxLength={10} />
+                <input className={inp} value={form.phone || ''} onChange={set('phone')} placeholder="10 digits" maxLength={10} />
               </div>
               <div>
                 <label className={lbl}>Email</label>
@@ -331,7 +494,7 @@ function EditModal({ believer, familyMembers, onSave, onClose }) {
             </div>
           </div>
 
-          {/* ── Church Details ────────────────────────────────────────────── */}
+          {/* Church */}
           <div className={sect('green')}>
             <p className="text-xs font-bold text-green-700 uppercase tracking-wide">Church Details</p>
             <div className="grid grid-cols-2 gap-3">
@@ -350,39 +513,32 @@ function EditModal({ believer, familyMembers, onSave, onClose }) {
               </div>
               <div>
                 <label className={lbl}>Baptized *</label>
-                <select className={sel} value={form.baptized || ''} onChange={(e) => handleBaptizedChange(e.target.value)} required>
+                <select className={sel} value={form.baptized || ''} onChange={(e) => setForm((f) => ({ ...f, baptized: e.target.value, baptizedDate: e.target.value === 'No' ? '' : f.baptizedDate }))} required>
                   <option value="">Select</option>
                   {BAPTIZED_OPTIONS.map((b) => <option key={b}>{b}</option>)}
                 </select>
               </div>
               {form.baptized === 'Yes' && (
                 <div>
-                  <label className={lbl}>Baptized Date </label>
-                  <input type="date" className={inp} value={form.baptizedDate || ''} onChange={set('baptizedDate')}
-                    max={new Date().toISOString().split('T')[0]} />
+                  <label className={lbl}>Baptized Date</label>
+                  <input type="date" className={inp} value={form.baptizedDate || ''} onChange={set('baptizedDate')} max={new Date().toISOString().split('T')[0]} />
                 </div>
               )}
               <div>
                 <label className={lbl}>Join Date</label>
-                <input type="date" className={inp} value={form.joinDate || ''} onChange={set('joinDate')}
-                  max={new Date().toISOString().split('T')[0]} />
+                <input type="date" className={inp} value={form.joinDate || ''} onChange={set('joinDate')} max={new Date().toISOString().split('T')[0]} />
               </div>
             </div>
           </div>
 
-          {/* ── Occupation ────────────────────────────────────────────────── */}
+          {/* Occupation */}
           <div className={sect('yellow')}>
             <p className="text-xs font-bold text-yellow-700 uppercase tracking-wide">Occupation</p>
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className={lbl}>Occupation Category *</label>
-                <select
-                  className={sel + (isUnder6 ? ' opacity-60 cursor-not-allowed' : '')}
-                  value={form.occupationCategory || ''}
-                  onChange={(e) => handleOccupationChange(e.target.value)}
-                  disabled={isUnder6}
-                  required
-                >
+                <select className={sel + (isUnder6 ? ' opacity-60 cursor-not-allowed' : '')}
+                  value={form.occupationCategory || ''} onChange={(e) => { const v = e.target.value; setForm((f) => ({ ...f, occupationCategory: v, educationLevel: v !== 'Student' ? '' : f.educationLevel })); }} disabled={isUnder6} required>
                   <option value="">Select</option>
                   {OCCUPATION_OPTIONS.map((o) => <option key={o}>{o}</option>)}
                 </select>
@@ -400,7 +556,7 @@ function EditModal({ believer, familyMembers, onSave, onClose }) {
             </div>
           </div>
 
-          {/* ── Marital Status (hidden for under-18) ─────────────────────── */}
+          {/* Marital */}
           {!isUnder18 && (
             <div className={sect('pink')}>
               <p className="text-xs font-bold text-pink-700 uppercase tracking-wide">Marital Status</p>
@@ -412,49 +568,32 @@ function EditModal({ believer, familyMembers, onSave, onClose }) {
                     {MARITAL_OPTIONS.map((m) => <option key={m}>{m}</option>)}
                   </select>
                 </div>
-
                 {form.maritalStatus === 'Married' && (
                   <>
                     <div>
                       <label className={lbl}>Wedding Date</label>
-                      <input type="date" className={inp} value={form.weddingDate || ''} onChange={set('weddingDate')}
-                        max={new Date().toISOString().split('T')[0]} />
+                      <input type="date" className={inp} value={form.weddingDate || ''} onChange={set('weddingDate')} max={new Date().toISOString().split('T')[0]} />
                     </div>
                     <div>
                       <label className={lbl}>Spouse Name (text)</label>
-                      <input className={inp} value={form.spouseName || ''} onChange={set('spouseName')}
-                        placeholder="Spouse full name" />
+                      <input className={inp} value={form.spouseName || ''} onChange={set('spouseName')} placeholder="Spouse full name" />
                     </div>
                     {spouseCandidates.length > 0 && (
                       <div>
-                        <label className={lbl}>
-                          Link Spouse
-                          <span className="text-gray-400 font-normal ml-1">(from same family)</span>
-                        </label>
+                        <label className={lbl}>Link Spouse <span className="text-gray-400 font-normal ml-1">(same family)</span></label>
                         <select className={sel} value={form.spouseId || ''} onChange={set('spouseId')}>
                           <option value="">None / Not in family</option>
-                          {spouseCandidates.map((m) => (
-                            <option key={m._id} value={m._id}>
-                              {m.fullName} · {m.relationshipToHead}
-                            </option>
-                          ))}
+                          {spouseCandidates.map((m) => <option key={m._id} value={m._id}>{m.fullName} · {m.relationshipToHead}</option>)}
                         </select>
-                        {form.spouseId && (
-                          <p className="text-xs text-green-600 mt-1 flex items-center gap-1">
-                            <CheckCircle className="w-3 h-3" />
-                            Spouse linked — cross-reference will be updated automatically
-                          </p>
-                        )}
+                        {form.spouseId && <p className="text-xs text-green-600 mt-1 flex items-center gap-1"><CheckCircle className="w-3 h-3" /> Spouse linked</p>}
                       </div>
                     )}
                   </>
                 )}
-
                 {form.maritalStatus === 'Widowed' && (
                   <div>
                     <label className={lbl}>Late Spouse Name</label>
-                    <input className={inp} value={form.spouseName || ''} onChange={set('spouseName')}
-                      placeholder="Late spouse name" />
+                    <input className={inp} value={form.spouseName || ''} onChange={set('spouseName')} placeholder="Late spouse name" />
                   </div>
                 )}
               </div>
@@ -463,23 +602,14 @@ function EditModal({ believer, familyMembers, onSave, onClose }) {
 
           {isUnder18 && (
             <div className="bg-blue-50 border border-blue-200 rounded-xl p-3">
-              <p className="text-xs text-blue-700 font-medium">
-                👶 Age is under 18 — marital status auto-set to <strong>Single</strong>. Marriage fields are hidden.
-              </p>
+              <p className="text-xs text-blue-700 font-medium">👶 Age under 18 — marital status auto-set to <strong>Single</strong>. Marriage fields hidden.</p>
             </div>
           )}
         </form>
 
-        {/* Footer */}
         <div className="px-6 py-4 border-t border-gray-100 flex justify-end gap-3 flex-shrink-0 bg-gray-50">
-          <button type="button" onClick={onClose} className="px-5 py-2 border border-gray-200 rounded-lg text-sm font-medium hover:bg-gray-100 transition-colors">
-            Cancel
-          </button>
-          <button
-            onClick={handleSubmit}
-            disabled={saving}
-            className="flex items-center gap-2 px-5 py-2 bg-red-800 text-white rounded-lg text-sm font-semibold hover:bg-red-900 transition-colors disabled:opacity-50"
-          >
+          <button type="button" onClick={onClose} className="px-5 py-2 border border-gray-200 rounded-lg text-sm font-medium hover:bg-gray-100 transition-colors">Cancel</button>
+          <button onClick={handleSubmit} disabled={saving} className="flex items-center gap-2 px-5 py-2 bg-red-800 text-white rounded-lg text-sm font-semibold hover:bg-red-900 transition-colors disabled:opacity-50">
             {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
             Save Changes
           </button>
@@ -490,113 +620,65 @@ function EditModal({ believer, familyMembers, onSave, onClose }) {
 }
 
 // ─── MAIN PAGE ────────────────────────────────────────────────────────────────
-
 export default function BelieverManagement() {
-  // Filter state
   const [filters, setFilters] = useState({
     search: '', membershipStatus: '', memberType: '', gender: '',
     maritalStatus: '', baptized: '', occupationCategory: '', village: '',
   });
-  const [showFilters, setShowFilters] = useState(false);
-
-  // Sort state
-  const [sortBy,  setSortBy]  = useState('name'); // 'name' | 'age'
-  const [sortDir, setSortDir] = useState('asc');  // 'asc'  | 'desc'
-
-  // Data state
-  const [believers,   setBelievers]   = useState([]);
-  const [pagination,  setPagination]  = useState({ total: 0, page: 1, totalPages: 1 });
-  const [loading,     setLoading]     = useState(false);
-
-  // UI state
+  const [showFilters,   setShowFilters]   = useState(false);
+  const [sortBy,        setSortBy]        = useState('name');
+  const [sortDir,       setSortDir]       = useState('asc');
+  const [believers,     setBelievers]     = useState([]);
+  const [pagination,    setPagination]    = useState({ total: 0, page: 1, totalPages: 1 });
+  const [loading,       setLoading]       = useState(false);
+  const [viewBelieverId,  setViewBelieverId]  = useState(null);
   const [editBeliever,    setEditBeliever]    = useState(null);
   const [deleteBeliever,  setDeleteBeliever]  = useState(null);
   const [familyMembers,   setFamilyMembers]   = useState([]);
   const [actionLoading,   setActionLoading]   = useState(false);
 
-  // ── Fetch ────────────────────────────────────────────────────────────────────
   const fetchBelievers = useCallback(async (page = 1, overrideSort) => {
     setLoading(true);
     try {
       const by  = overrideSort?.sortBy  ?? sortBy;
       const dir = overrideSort?.sortDir ?? sortDir;
-
-      const params = new URLSearchParams({
-        page, limit: 20,
-        sortBy: by, sortDir: dir,
-      });
+      const params = new URLSearchParams({ page, limit: 20, sortBy: by, sortDir: dir });
       Object.entries(filters).forEach(([k, v]) => { if (v) params.append(k, v); });
-
       const { data } = await api.get(`/believers?${params}`);
       setBelievers(data.data);
       setPagination(data.pagination);
-    } catch {
-      toast.error('Failed to load believers.');
-    } finally {
-      setLoading(false);
-    }
+    } catch { toast.error('Failed to load believers.'); }
+    finally  { setLoading(false); }
   }, [filters, sortBy, sortDir]);
 
-  useEffect(() => { fetchBelievers(1); }, []); // initial load
+  useEffect(() => { fetchBelievers(1); }, []);
+  useEffect(() => { fetchBelievers(1); }, [filters]); // eslint-disable-line
 
-  // ── Sort toggle: clicking same column flips direction; new column → asc ─────
   const handleSort = (field) => {
-    let newDir = 'asc';
-    if (sortBy === field) newDir = sortDir === 'asc' ? 'desc' : 'asc';
-    setSortBy(field);
-    setSortDir(newDir);
+    const newDir = sortBy === field ? (sortDir === 'asc' ? 'desc' : 'asc') : 'asc';
+    setSortBy(field); setSortDir(newDir);
     fetchBelievers(pagination.page, { sortBy: field, sortDir: newDir });
   };
 
-  // ── Search submit ─────────────────────────────────────────────────────────
-  const handleSearch = (e) => {
-    e.preventDefault();
-    fetchBelievers(1);
-  };
-
-  // ── Clear filters ─────────────────────────────────────────────────────────
-  const clearFilters = () => {
-    setFilters({ search: '', membershipStatus: '', memberType: '', gender: '',
-      maritalStatus: '', baptized: '', occupationCategory: '', village: '' });
-    setSortBy('name');
-    setSortDir('asc');
-  };
-
-  useEffect(() => { fetchBelievers(1); }, [filters]); // eslint-disable-line
-
-  // ── Open edit — also load family members for spouse dropdown ─────────────
   const openEdit = async (b) => {
     setEditBeliever(b);
-    try {
-      const { data } = await api.get(`/families/${b.familyId?._id || b.familyId}`);
-      setFamilyMembers(data.data?.members || []);
-    } catch {
-      setFamilyMembers([]);
-    }
+    try { const { data } = await api.get(`/families/${b.familyId?._id || b.familyId}`); setFamilyMembers(data.data?.members || []); }
+    catch { setFamilyMembers([]); }
   };
 
-  // ── Open delete — load family members for head-reassign dropdown ─────────
   const openDelete = async (b) => {
     setDeleteBeliever(b);
     if (b.isHead) {
-      try {
-        const { data } = await api.get(`/families/${b.familyId?._id || b.familyId}`);
-        setFamilyMembers(data.data?.members || []);
-      } catch {
-        setFamilyMembers([]);
-      }
+      try { const { data } = await api.get(`/families/${b.familyId?._id || b.familyId}`); setFamilyMembers(data.data?.members || []); }
+      catch { setFamilyMembers([]); }
     }
   };
 
-  // ── Delete / head-reassign ────────────────────────────────────────────────
   const handleDelete = async (newHeadId) => {
     setActionLoading(true);
     try {
       if (newHeadId) {
-        // Assign new head first
-        await api.put(`/families/${deleteBeliever.familyId?._id || deleteBeliever.familyId}/assign-head`, {
-          newHeadId,
-        });
+        await api.put(`/families/${deleteBeliever.familyId?._id || deleteBeliever.familyId}/assign-head`, { newHeadId });
         toast.success('New head assigned.');
       }
       await api.delete(`/believers/${deleteBeliever._id}`);
@@ -605,33 +687,26 @@ export default function BelieverManagement() {
       fetchBelievers(pagination.page);
     } catch (err) {
       toast.error(err.response?.data?.message || 'Delete failed.');
-    } finally {
-      setActionLoading(false);
-    }
+    } finally { setActionLoading(false); }
   };
 
-  // ── Active filter count (for badge on filter button) ─────────────────────
   const activeFilterCount = Object.values(filters).filter(Boolean).length;
 
-  // ── Sorted icon header cell builder ──────────────────────────────────────
   const SortTh = ({ field, label, className = '' }) => (
-    <th
-      className={`px-4 py-3 text-left text-xs font-bold uppercase tracking-wider cursor-pointer select-none whitespace-nowrap group ${className}`}
-      onClick={() => handleSort(field)}
-    >
+    <th className={`px-4 py-3 text-left text-xs font-bold uppercase tracking-wider cursor-pointer select-none whitespace-nowrap group ${className}`}
+      onClick={() => handleSort(field)}>
       <span className="flex items-center gap-1 group-hover:text-red-200 transition-colors">
-        {label}
-        <SortArrow field={field} sortBy={sortBy} sortDir={sortDir} />
+        {label}<SortArrow field={field} sortBy={sortBy} sortDir={sortDir} />
       </span>
     </th>
   );
 
-  const sel = 'border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-800/30 focus:border-red-800 bg-white';
+  const selCls = 'border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-800/30 focus:border-red-800 bg-white';
 
   return (
     <div className="space-y-5">
 
-      {/* ── Page Header ──────────────────────────────────────────────────────── */}
+      {/* Page Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <h2 className="text-2xl font-bold text-gray-800">Believer Management</h2>
@@ -641,17 +716,14 @@ export default function BelieverManagement() {
             ({sortDir === 'asc' ? '↑ A–Z / Oldest' : '↓ Z–A / Youngest'})
           </p>
         </div>
-        <div className="flex gap-2">
-          <button onClick={() => fetchBelievers(pagination.page)} className="btn-secondary">
-            <RefreshCw className="w-4 h-4" />
-            Refresh
-          </button>
-        </div>
+        <button onClick={() => fetchBelievers(pagination.page)} className="btn-secondary">
+          <RefreshCw className="w-4 h-4" /> Refresh
+        </button>
       </div>
 
-      {/* ── Search + Filter Bar ───────────────────────────────────────────────── */}
+      {/* Search + Filters */}
       <div className="card !p-3 space-y-3">
-        <form onSubmit={handleSearch} className="flex gap-2">
+        <form onSubmit={(e) => { e.preventDefault(); fetchBelievers(1); }} className="flex gap-2">
           <div className="flex-1 relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
             <input
@@ -661,20 +733,15 @@ export default function BelieverManagement() {
               onChange={(e) => setFilters({ ...filters, search: e.target.value })}
             />
             {filters.search && (
-              <button type="button" onClick={() => setFilters({ ...filters, search: '' })}
-                className="absolute right-3 top-1/2 -translate-y-1/2">
+              <button type="button" onClick={() => setFilters({ ...filters, search: '' })} className="absolute right-3 top-1/2 -translate-y-1/2">
                 <X className="w-3.5 h-3.5 text-gray-400" />
               </button>
             )}
           </div>
           <button type="submit" className="btn-primary">Search</button>
-          <button
-            type="button"
-            onClick={() => setShowFilters(!showFilters)}
-            className={`btn-secondary relative ${showFilters ? 'ring-2 ring-red-800/30' : ''}`}
-          >
-            <Filter className="w-4 h-4" />
-            Filters
+          <button type="button" onClick={() => setShowFilters(!showFilters)}
+            className={`btn-secondary relative ${showFilters ? 'ring-2 ring-red-800/30' : ''}`}>
+            <Filter className="w-4 h-4" /> Filters
             {activeFilterCount > 0 && (
               <span className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-800 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
                 {activeFilterCount}
@@ -682,34 +749,25 @@ export default function BelieverManagement() {
             )}
           </button>
           {activeFilterCount > 0 && (
-            <button type="button" onClick={clearFilters} className="btn-secondary text-red-700">
-              <X className="w-4 h-4" />
-              Clear
+            <button type="button" onClick={() => setFilters({ search:'',membershipStatus:'',memberType:'',gender:'',maritalStatus:'',baptized:'',occupationCategory:'',village:'' })} className="btn-secondary text-red-700">
+              <X className="w-4 h-4" /> Clear
             </button>
           )}
         </form>
 
-        {/* ── Sort Controls (quick toggle buttons) ─────────────────────────── */}
+        {/* Sort buttons */}
         <div className="flex items-center gap-2 flex-wrap">
           <span className="text-xs text-gray-500 font-medium flex items-center gap-1">
             <ArrowUpDown className="w-3.5 h-3.5" /> Sort:
           </span>
           {[
-            { field: 'name', label: 'Name A–Z', descLabel: 'Name Z–A' },
-            { field: 'age',  label: 'Age: Oldest first', descLabel: 'Age: Youngest first' },
-          ].map(({ field, label, descLabel }) => (
-            <button
-              key={field}
-              onClick={() => handleSort(field)}
+            { field: 'name', asc: 'Name A–Z',         desc: 'Name Z–A' },
+            { field: 'age',  asc: 'Age: Oldest first', desc: 'Age: Youngest first' },
+          ].map(({ field, asc, desc }) => (
+            <button key={field} onClick={() => handleSort(field)}
               className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all flex items-center gap-1.5
-                ${sortBy === field
-                  ? 'bg-red-800 text-white border-red-800 shadow-sm'
-                  : 'bg-white text-gray-600 border-gray-200 hover:border-red-300 hover:text-red-800'
-                }`}
-            >
-              {sortBy === field
-                ? (sortDir === 'asc' ? label : descLabel)
-                : label}
+                ${sortBy === field ? 'bg-red-800 text-white border-red-800 shadow-sm' : 'bg-white text-gray-600 border-gray-200 hover:border-red-300 hover:text-red-800'}`}>
+              {sortBy === field ? (sortDir === 'asc' ? asc : desc) : asc}
               {sortBy === field
                 ? (sortDir === 'asc' ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />)
                 : <ChevronsUpDown className="w-3 h-3 text-gray-300" />}
@@ -717,7 +775,7 @@ export default function BelieverManagement() {
           ))}
         </div>
 
-        {/* ── Expanded Filters ─────────────────────────────────────────────── */}
+        {/* Expanded Filters */}
         {showFilters && (
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 pt-1 border-t border-gray-100">
             {[
@@ -730,11 +788,8 @@ export default function BelieverManagement() {
             ].map(({ label, key, opts }) => (
               <div key={key}>
                 <label className="block text-xs font-semibold text-gray-500 mb-1">{label}</label>
-                <select
-                  className={sel + ' w-full'}
-                  value={filters[key]}
-                  onChange={(e) => setFilters({ ...filters, [key]: e.target.value })}
-                >
+                <select className={selCls + ' w-full'} value={filters[key]}
+                  onChange={(e) => setFilters({ ...filters, [key]: e.target.value })}>
                   <option value="">All</option>
                   {opts.map((o) => <option key={o}>{o}</option>)}
                 </select>
@@ -742,18 +797,14 @@ export default function BelieverManagement() {
             ))}
             <div>
               <label className="block text-xs font-semibold text-gray-500 mb-1">Village</label>
-              <input
-                className={sel + ' w-full'}
-                placeholder="Filter by village"
-                value={filters.village}
-                onChange={(e) => setFilters({ ...filters, village: e.target.value })}
-              />
+              <input className={selCls + ' w-full'} placeholder="Filter by village"
+                value={filters.village} onChange={(e) => setFilters({ ...filters, village: e.target.value })} />
             </div>
           </div>
         )}
       </div>
 
-      {/* ── Table ─────────────────────────────────────────────────────────────── */}
+      {/* Table */}
       <div className="card !p-0 overflow-hidden">
         {loading ? (
           <div className="flex items-center justify-center py-20">
@@ -767,15 +818,13 @@ export default function BelieverManagement() {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm min-w-[900px]">
+            <table className="w-full text-sm min-w-[980px]">
               <thead className="bg-red-900 text-white">
                 <tr>
-                  {/* Sortable: Name */}
-                  <SortTh field="name" label="Name" className="pl-5" />
+                  <SortTh field="name" label="Name"       className="pl-5" />
                   <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider">Family</th>
                   <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider">Relation</th>
-                  {/* Sortable: Age */}
-                  <SortTh field="age" label="Age / DOB" />
+                  <SortTh field="age"  label="Age / DOB" />
                   <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider">Type</th>
                   <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider">Marital</th>
                   <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider">Baptized</th>
@@ -787,20 +836,25 @@ export default function BelieverManagement() {
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {believers.map((b, i) => {
-                  // Resolve spouse display name
                   const spouseDisplay =
-                    (typeof b.spouseId === 'object' ? b.spouseId?.fullName : null) ||
-                    b.spouseName || null;
+                    (typeof b.spouseId === 'object' ? b.spouseId?.fullName : null) || b.spouseName || null;
 
-                  // Resolve relation label
-                  const relationLabel =
-                    b.relationshipToHead === 'Other' && b.relationCustom
-                      ? b.relationCustom
-                      : b.relationshipToHead;
+                  // ── Relation column: "Son of [HeadName]" style ──
+                  const rawRel = relLabel(b);
+                  // We need head name — populate from familyId if available
+                  // The API returns familyId populated with familyCode, village, address
+                  // Head name isn't in list response; show relation only, head name shown in View modal
+                  const relationDisplay = b.isHead
+                    ? <span className="text-xs font-semibold text-red-700">Self</span>
+                    : (
+                      <div>
+                        <p className="text-xs text-gray-700 font-medium">{rawRel}</p>
+                      </div>
+                    );
 
                   return (
                     <tr key={b._id} className={`hover:bg-red-50/40 transition-colors ${i % 2 === 1 ? 'bg-red-50/10' : ''}`}>
-                      {/* Name + Head badge */}
+                      {/* Name */}
                       <td className="px-5 py-3">
                         <div className="flex items-start gap-2">
                           <div className={`w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 text-xs font-bold mt-0.5
@@ -809,35 +863,26 @@ export default function BelieverManagement() {
                           </div>
                           <div>
                             <p className="font-semibold text-gray-800 leading-tight">{b.fullName}</p>
-                            {b.isHead && (
-                              <span className="text-[10px] font-bold text-red-800 bg-red-100 px-1.5 py-0.5 rounded-full">
-                                HEAD
-                              </span>
-                            )}
+                            {b.tamilName && <p className="text-[10px] text-gray-400 leading-tight">{b.tamilName}</p>}
+                            {b.isHead && <span className="text-[10px] font-bold text-red-800 bg-red-100 px-1.5 py-0.5 rounded-full">HEAD</span>}
                           </div>
                         </div>
                       </td>
-
                       {/* Family */}
                       <td className="px-4 py-3">
                         <p className="text-xs font-medium text-gray-700">{b.familyId?.familyCode || '—'}</p>
                         <p className="text-xs text-gray-400">{b.familyId?.village || '—'}</p>
                       </td>
-
-                      {/* Relationship to Head */}
+                      {/* Relation — shows relation label; head name visible in View modal */}
+                      <td className="px-4 py-3">{relationDisplay}</td>
+                      {/* Age/DOB */}
                       <td className="px-4 py-3">
-                        <p className="text-xs text-gray-600">{relationLabel || '—'}</p>
+                        {b.dob
+                          ? <><p className="text-sm font-semibold text-gray-700">{calcAge(b.dob)} yrs</p><p className="text-xs text-gray-400">{formatDate(b.dob)}</p></>
+                          : <p className="text-xs text-gray-400">—</p>
+                        }
                       </td>
-
-                      {/* Age / DOB */}
-                      <td className="px-4 py-3">
-                        <p className="text-sm font-semibold text-gray-700">{calcAge(b.dob)} yrs</p>
-                        <p className="text-xs text-gray-400">{formatDate(b.dob)}</p>
-                      </td>
-
-                      {/* Member Type */}
                       <td className="px-4 py-3"><TypeBadge type={b.memberType} /></td>
-
                       {/* Marital */}
                       <td className="px-4 py-3">
                         <p className="text-xs text-gray-600">{b.maritalStatus || '—'}</p>
@@ -846,41 +891,27 @@ export default function BelieverManagement() {
                             ♥ {spouseDisplay}
                           </p>
                         )}
-                        {/* ✅ NEW: Show wedding date for married believers */}
                         {b.maritalStatus === 'Married' && b.weddingDate && (
-                          <p className="text-[10px] text-gray-400 mt-0.5">
-                             {formatDate(b.weddingDate)}
-                          </p>
+                          <p className="text-[10px] text-gray-400 mt-0.5">{formatDate(b.weddingDate)}</p>
                         )}
                       </td>
-
-                      {/* Baptized */}
                       <td className="px-4 py-3"><BapBadge val={b.baptized} /></td>
-
-                      {/* Occupation */}
                       <td className="px-4 py-3 text-xs text-gray-600">{b.occupationCategory || '—'}</td>
-
-                      {/* Phone */}
                       <td className="px-4 py-3 text-xs text-gray-600">{b.phone || '—'}</td>
-
-                      {/* Status */}
                       <td className="px-4 py-3"><StatusBadge status={b.membershipStatus} /></td>
-
-                      {/* Actions */}
+                      {/* Actions — View, Edit, Delete */}
                       <td className="px-4 py-3">
                         <div className="flex items-center justify-center gap-1.5">
-                          <button
-                            onClick={() => openEdit(b)}
-                            className="p-1.5 rounded-lg text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
-                            title="Edit"
-                          >
+                          <button onClick={() => setViewBelieverId(b._id)}
+                            className="p-1.5 rounded-lg text-gray-400 hover:text-green-600 hover:bg-green-50 transition-colors" title="View details">
+                            <Eye className="w-4 h-4" />
+                          </button>
+                          <button onClick={() => openEdit(b)}
+                            className="p-1.5 rounded-lg text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition-colors" title="Edit">
                             <Edit2 className="w-4 h-4" />
                           </button>
-                          <button
-                            onClick={() => openDelete(b)}
-                            className="p-1.5 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors"
-                            title="Delete"
-                          >
+                          <button onClick={() => openDelete(b)}
+                            className="p-1.5 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors" title="Delete">
                             <Trash2 className="w-4 h-4" />
                           </button>
                         </div>
@@ -894,32 +925,23 @@ export default function BelieverManagement() {
         )}
       </div>
 
-      {/* ── Pagination ────────────────────────────────────────────────────────── */}
+      {/* Pagination */}
       {pagination.totalPages > 1 && (
         <div className="flex items-center justify-between">
-          <p className="text-sm text-gray-500">
-            Page {pagination.page} of {pagination.totalPages} ({pagination.total} total)
-          </p>
+          <p className="text-sm text-gray-500">Page {pagination.page} of {pagination.totalPages} ({pagination.total} total)</p>
           <div className="flex gap-2">
-            <button
-              onClick={() => fetchBelievers(pagination.page - 1)}
-              disabled={pagination.page <= 1 || loading}
-              className="btn-secondary text-sm disabled:opacity-40"
-            >
-              Previous
-            </button>
-            <button
-              onClick={() => fetchBelievers(pagination.page + 1)}
-              disabled={pagination.page >= pagination.totalPages || loading}
-              className="btn-secondary text-sm disabled:opacity-40"
-            >
-              Next
-            </button>
+            <button onClick={() => fetchBelievers(pagination.page - 1)} disabled={pagination.page <= 1 || loading} className="btn-secondary text-sm disabled:opacity-40">Previous</button>
+            <button onClick={() => fetchBelievers(pagination.page + 1)} disabled={pagination.page >= pagination.totalPages || loading} className="btn-secondary text-sm disabled:opacity-40">Next</button>
           </div>
         </div>
       )}
 
-      {/* ── Edit Modal ────────────────────────────────────────────────────────── */}
+      {/* View Modal */}
+      {viewBelieverId && (
+        <ViewModal believerId={viewBelieverId} onClose={() => setViewBelieverId(null)} />
+      )}
+
+      {/* Edit Modal */}
       {editBeliever && (
         <EditModal
           believer={editBeliever}
@@ -929,7 +951,7 @@ export default function BelieverManagement() {
         />
       )}
 
-      {/* ── Delete Confirm ────────────────────────────────────────────────────── */}
+      {/* Delete Confirm */}
       {deleteBeliever && (
         <DeleteConfirm
           believer={deleteBeliever}
