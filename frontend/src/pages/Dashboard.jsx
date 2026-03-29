@@ -312,14 +312,11 @@ function CouplesModal({ onClose }) {
     const spouseName = (b.spouseId && typeof b.spouseId === 'object'
       ? b.spouseId.fullName : null) || b.spouseName || '—';
     return (
-      <tr key={b._id} className={isInactive ? 'bg-gray-50/80' : i % 2 === 1 ? 'bg-gray-50/40' : ''}>
-        <td className="px-4 py-2.5 text-gray-400 text-xs">{i + 1}</td>
-        <td className="px-4 py-2.5">
-          <span className={`font-medium ${isInactive ? 'text-gray-400' : 'text-gray-800'}`}>{b.fullName}</span>
-          <span className="text-gray-400 mx-1.5">—</span>
-          <span className={`font-medium ${isInactive ? 'text-gray-400' : 'text-gray-700'}`}>{spouseName}</span>
-          {isInactive && <InactiveBadge />}
-        </td>
+      <tr key={b._id} className={`hover:bg-gray-50 transition-colors ${i % 2 === 1 ? 'bg-gray-50/40' : ''}`}>
+        <td className="px-4 py-2.5 text-gray-400 font-medium text-xs">{i + 1}</td>
+        <span className="font-medium text-gray-800">{b.fullName}</span>
+          <span className="text-gray-400 mx-1.5">♥</span>
+          <span className="font-medium text-gray-700">{spouseName}</span>
         <td className="px-4 py-2.5 text-gray-600 text-xs">{b.familyId?.village || '—'}</td>
       </tr>
     );
