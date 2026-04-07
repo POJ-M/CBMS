@@ -1,4 +1,3 @@
-
 const momentTz   = require('moment-timezone');
 const Believer   = require('../models/Believer');
 const Family     = require('../models/Family');
@@ -18,31 +17,15 @@ const EDITABLE_FIELDS = [
 ];
 const LOCKED_FIELDS = ['familyId', 'isHead', 'relationshipToHead'];
 
-// ─── THE FIX: sanitizePayload ─────────────────────────────────────────────────
-/**
- * Converts the raw frontend payload into a safe Mongoose update operation.
- *
- * Problems solved:
- *   • spouseId: ""         → clean.spouseId = null   (not "" which breaks ObjectId cast)
- *   • educationLevel: ""   → unsets.push('educationLevel')  (not sent in $set at all)
- *   • weddingDate: ""      → skipped entirely (not overwritten with invalid date)
- *   • baptizedDate: ""     → clean.baptizedDate = null
- *   • joinDate: ""         → skipped
- *
- * @returns {{ clean: Object, unsets: string[] }}
- */
 const sanitizeUpdateData = (raw) => {
   const data = {};
   EDITABLE_FIELDS.forEach((key) => {
     if (raw[key] === undefined) return;
     if (key === 'spouseId') {
-      // "" or "null" or null → null; valid ObjectId string → keep
       data[key] = raw[key] === '' || raw[key] === 'null' ? null : raw[key];
     } else if (key === 'educationLevel') {
-      // "" → skip entirely (don't include in update, avoids enum error)
       if (raw[key] !== '') data[key] = raw[key];
     } else if (key === 'weddingDate') {
-      // "" → undefined means don't update
       if (raw[key] !== '') data[key] = raw[key];
     } else {
       data[key] = raw[key];
@@ -51,7 +34,6 @@ const sanitizeUpdateData = (raw) => {
   return data;
 };
 
-// ─── HELPERS ──────────────────────────────────────────────────────────────────
 const calcAgeIST = (dob) =>
   momentTz().tz(TIMEZONE).diff(momentTz(dob).tz(TIMEZONE), 'years');
 
@@ -60,6 +42,10 @@ const calcAgeIST = (dob) =>
 /**
  * @desc  Get all active believers (filtered + paginated)
  * @route GET /api/believers
+ *
+ * KEY CHANGE: familyId is now populated with headId.fullName so the
+ * frontend can render "Son of Samuel Raj" in the Relation column
+ * without any extra API calls.
  */
 const getAllBelievers = catchAsync(async (req, res) => {
   const {
@@ -69,30 +55,26 @@ const getAllBelievers = catchAsync(async (req, res) => {
     sortBy = 'name', sortDir = 'asc',
   } = req.query;
 
-  const pageNum = Math.max(1, Number(page));
+  const pageNum  = Math.max(1, Number(page));
   const limitNum = Math.min(100, Math.max(1, Number(limit)));
-  const dir = sortDir === 'desc' ? -1 : 1;
+  const dir      = sortDir === 'desc' ? -1 : 1;
 
-  // Build sort object
   let sortObj;
   if (sortBy === 'age') {
-    // age asc  → oldest first → dob ASC  (lower date = older person)
-    // age desc → youngest first → dob DESC
     sortObj = { dob: dir };
   } else {
-    // default: sort by fullName
     sortObj = { fullName: dir };
   }
 
   const query = { isDeleted: false };
-  if (membershipStatus) query.membershipStatus = membershipStatus;
-  if (memberType) query.memberType = memberType;
-  if (gender) query.gender = gender;
-  if (maritalStatus) query.maritalStatus = maritalStatus;
-  if (baptized) query.baptized = baptized;
+  if (membershipStatus)  query.membershipStatus  = membershipStatus;
+  if (memberType)        query.memberType        = memberType;
+  if (gender)            query.gender            = gender;
+  if (maritalStatus)     query.maritalStatus     = maritalStatus;
+  if (baptized)          query.baptized          = baptized;
   if (occupationCategory) query.occupationCategory = occupationCategory;
-  if (isHead !== undefined) query.isHead = isHead === 'true';
-  if (search?.trim()) query.fullName = { $regex: search.trim(), $options: 'i' };
+  if (isHead !== undefined) query.isHead         = isHead === 'true';
+  if (search?.trim())    query.fullName          = { $regex: search.trim(), $options: 'i' };
 
   if (village?.trim()) {
     const matchingFamilies = await Family.find({
@@ -105,7 +87,12 @@ const getAllBelievers = catchAsync(async (req, res) => {
   const [total, believers] = await Promise.all([
     Believer.countDocuments(query),
     Believer.find(query)
-      .populate('familyId', 'familyCode village address')
+      // ── CHANGED: also populate headId so front-end gets head's fullName ──
+      .populate({
+        path: 'familyId',
+        select: 'familyCode village address headId',
+        populate: { path: 'headId', select: 'fullName' },
+      })
       .populate('spouseId', 'fullName')
       .skip((pageNum - 1) * limitNum)
       .limit(limitNum)
@@ -132,7 +119,11 @@ const getAllBelievers = catchAsync(async (req, res) => {
  */
 const getBelieverById = catchAsync(async (req, res, next) => {
   const believer = await Believer.findOne({ _id: req.params.id, isDeleted: false })
-    .populate('familyId', 'familyCode village address')
+    .populate({
+      path: 'familyId',
+      select: 'familyCode village address headId',
+      populate: { path: 'headId', select: 'fullName' },
+    })
     .populate('spouseId', 'fullName tamilName dob gender');
 
   if (!believer) return next(new AppError('Believer not found.', 404));
@@ -140,54 +131,41 @@ const getBelieverById = catchAsync(async (req, res, next) => {
 });
 
 /**
- * @desc  Update believer — with full sanitization to fix cast/enum errors
+ * @desc  Update believer
  * @route PUT /api/believers/:id
  */
 const updateBeliever = catchAsync(async (req, res, next) => {
-  // Block locked fields
   const attemptedLocked = LOCKED_FIELDS.filter((f) => req.body[f] !== undefined);
   if (attemptedLocked.length > 0) {
     return next(new AppError(`Cannot edit: ${attemptedLocked.join(', ')}.`, 400));
   }
 
-  // Sanitize: fix empty spouseId, educationLevel, weddingDate
   const updateData = sanitizeUpdateData(req.body);
 
-  // ── Phone validation ──
   if (updateData.phone && !/^\d{10}$/.test(updateData.phone)) {
     return next(new AppError('Phone number must be exactly 10 digits.', 400));
   }
 
-  // ── Age check: under-18 rules ──
   if (updateData.dob) {
     const age = calcAge(updateData.dob);
     if (age < 18) {
       updateData.maritalStatus = 'Single';
-      updateData.spouseId = null;
+      updateData.spouseId      = null;
       delete updateData.weddingDate;
     }
   } else {
-    // dob not being updated — check current dob
     const current = await Believer.findById(req.params.id).select('dob familyId isHead');
     if (!current) return next(new AppError('Believer not found.', 404));
     const age = calcAge(current.dob);
     if (age < 18) {
       updateData.maritalStatus = 'Single';
-      updateData.spouseId = null;
+      updateData.spouseId      = null;
       delete updateData.weddingDate;
     }
   }
 
-  // ── Baptism logic ──
-  
   if (updateData.baptized === 'No') {
     updateData.baptizedDate = null;
-  }
-
-  // ── Marriage logic ──
-  if (updateData.maritalStatus === 'Married' && updateData.weddingDate === undefined) {
-    // only block if they're setting married without a weddingDate key at all
-    // (weddingDate may already exist in DB)
   }
 
   const believer = await Believer.findOneAndUpdate(
@@ -195,16 +173,18 @@ const updateBeliever = catchAsync(async (req, res, next) => {
     updateData,
     { new: true, runValidators: true }
   )
-    .populate('familyId', 'familyCode village address')
+    .populate({
+      path: 'familyId',
+      select: 'familyCode village address headId',
+      populate: { path: 'headId', select: 'fullName' },
+    })
     .populate('spouseId', 'fullName');
 
   if (!believer) return next(new AppError('Believer not found.', 404));
 
-  // ── Sync spouse cross-reference ──
   if (updateData.spouseId) {
     await Believer.findByIdAndUpdate(updateData.spouseId, { spouseId: believer._id });
   } else if (updateData.spouseId === null) {
-    // Clearing spouse — remove backlink
     const old = await Believer.findById(req.params.id);
     if (old?.spouseId) {
       await Believer.findByIdAndUpdate(old.spouseId, { spouseId: null });
@@ -279,7 +259,6 @@ const restoreBeliever = catchAsync(async (req, res, next) => {
   const believer = await Believer.findOne({ _id: req.params.id, isDeleted: true });
   if (!believer) return next(new AppError('Trashed believer not found.', 404));
 
-  // Safety: ensure family isn't also deleted
   const family = await Family.findOne({ _id: believer.familyId, isDeleted: false });
   if (!family) {
     return next(new AppError(
@@ -304,7 +283,6 @@ const permanentDeleteBeliever = catchAsync(async (req, res, next) => {
   if (!believer) {
     return next(new AppError('Believer not found in trash. Only trashed records can be permanently deleted.', 404));
   }
-
   await Believer.findByIdAndDelete(req.params.id);
   res.status(200).json({ success: true, message: `${believer.fullName} permanently deleted.` });
 });
