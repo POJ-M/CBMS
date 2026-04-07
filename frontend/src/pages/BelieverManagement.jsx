@@ -71,23 +71,16 @@ const SortArrow = ({ field, sortBy, sortDir }) => {
 };
 
 // ─── RELATION DISPLAY HELPER ──────────────────────────────────────────────────
-// Returns e.g. "Son of Samuel Raj" or "Self (Head)"
+// Returns "Son of Samuel Raj" / "Wife of Samuel Raj" / "Self (Head)" etc.
+// headId.fullName is now populated by the backend in getAllBelievers.
 const buildRelationLabel = (b) => {
-  if (b.isHead) return 'Self (Head)';
+  if (b.isHead) return null; // handled separately
   const rel = b.relationshipToHead === 'Other' && b.relationCustom
-    ? b.relationCustom : b.relationshipToHead;
-  if (!rel) return '—';
-  // We need the head name — it's on the familyId if populated
+    ? b.relationCustom
+    : b.relationshipToHead || null;
+  if (!rel) return { rel: '—', head: null };
   const headName = b.familyId?.headId?.fullName || null;
-  if (headName && rel !== 'Self') return `${rel} of ${headName}`;
-  return rel;
-};
-
-// Compact version for table column (no head name, just relation)
-const relLabel = (b) => {
-  if (b.isHead) return 'Self';
-  return b.relationshipToHead === 'Other' && b.relationCustom
-    ? b.relationCustom : b.relationshipToHead || '—';
+  return { rel, head: headName };
 };
 
 // ─── VIEW MODAL (full believer detail) ───────────────────────────────────────
@@ -191,15 +184,17 @@ function ViewModal({ believerId, onClose }) {
 
             {/* ── Relation & Family ── */}
             <Section title="Family & Relation" color="red">
-              <InfoRow icon={Users}    label="Family Code" value={believer.familyId?.familyCode || '—'} />
-              <InfoRow icon={MapPin}   label="Village"     value={believer.familyId?.village || '—'} />
-              <InfoRow icon={User}     label="Relationship to Head"
-                value={
-                  believer.isHead ? 'Self (Head)' :
-                  believer.relationshipToHead === 'Other' && believer.relationCustom
+              <InfoRow icon={Users}  label="Family Code" value={believer.familyId?.familyCode || '—'} />
+              <InfoRow icon={MapPin} label="Village"     value={believer.familyId?.village || '—'} />
+              <InfoRow icon={User}   label="Relationship to Head"
+                value={(() => {
+                  if (believer.isHead) return 'Self (Head)';
+                  const rel = believer.relationshipToHead === 'Other' && believer.relationCustom
                     ? `Other — ${believer.relationCustom}`
-                    : believer.relationshipToHead || '—'
-                }
+                    : believer.relationshipToHead || '—';
+                  const headName = believer.familyId?.headId?.fullName || null;
+                  return headName && rel !== '—' ? `${rel} of ${headName}` : rel;
+                })()}
               />
               {believer.joinDate && <InfoRow icon={Calendar} label="Join Date" value={formatDate(believer.joinDate)} />}
             </Section>
@@ -839,18 +834,9 @@ export default function BelieverManagement() {
                   const spouseDisplay =
                     (typeof b.spouseId === 'object' ? b.spouseId?.fullName : null) || b.spouseName || null;
 
-                  // ── Relation column: "Son of [HeadName]" style ──
-                  const rawRel = relLabel(b);
-                  // We need head name — populate from familyId if available
-                  // The API returns familyId populated with familyCode, village, address
-                  // Head name isn't in list response; show relation only, head name shown in View modal
-                  const relationDisplay = b.isHead
-                    ? <span className="text-xs font-semibold text-red-700">Self</span>
-                    : (
-                      <div>
-                        <p className="text-xs text-gray-700 font-medium">{rawRel}</p>
-                      </div>
-                    );
+                  // ── Relation column: "Son of Samuel Raj" style ──
+                  // headId.fullName is now populated from the backend (believer.controller.js)
+                  const relInfo = buildRelationLabel(b);
 
                   return (
                     <tr key={b._id} className={`hover:bg-red-50/40 transition-colors ${i % 2 === 1 ? 'bg-red-50/10' : ''}`}>
@@ -873,8 +859,21 @@ export default function BelieverManagement() {
                         <p className="text-xs font-medium text-gray-700">{b.familyId?.familyCode || '—'}</p>
                         <p className="text-xs text-gray-400">{b.familyId?.village || '—'}</p>
                       </td>
-                      {/* Relation — shows relation label; head name visible in View modal */}
-                      <td className="px-4 py-3">{relationDisplay}</td>
+                      {/* Relation — "Son of Samuel Raj" using headId populated by backend */}
+                      <td className="px-4 py-3">
+                        {b.isHead ? (
+                          <span className="text-xs font-semibold text-red-700 bg-red-50 px-2 py-0.5 rounded-full">Self</span>
+                        ) : relInfo ? (
+                          <div>
+                            <p className="text-xs text-gray-700 font-medium leading-tight">{relInfo.rel}</p>
+                            {relInfo.head && (
+                              <p className="text-[10px] text-gray-400 mt-0.5 leading-tight">of {relInfo.head}</p>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-xs text-gray-400">—</span>
+                        )}
+                      </td>
                       {/* Age/DOB */}
                       <td className="px-4 py-3">
                         {b.dob
