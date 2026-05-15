@@ -94,9 +94,16 @@ app.use(cors({ origin: allowedOrigins, credentials: true }));
 app.get('/', (req, res) => {
   res.json({
     status:  'success',
-    message: '🚀 Internal System API',
-    service: 'Internal System',
+    message: '🚀 API',
+    service: 'CBM System',
     version: '1.0.0',
+  });
+});
+
+app.get('/health', (req, res) => {
+  res.json({
+    status:      'OK',
+    service:     'CBM System',
   });
 });
 
