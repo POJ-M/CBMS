@@ -91,7 +91,14 @@ const allowedOrigins =
 
 app.use(cors({ origin: allowedOrigins, credentials: true }));
 
-
+app.get('/', (req, res) => {
+  res.json({
+    status:  'success',
+    message: '🚀 Internal System API',
+    service: 'Internal System',
+    version: '1.0.0',
+  });
+});
 
 // ── API Routes ────────────────────────────────────────────────────────────────
 app.use('/api/auth', authRoutes);
